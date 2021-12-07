@@ -10,9 +10,8 @@ import .chunked
 import .response
 import .connection
 
-class Request implements reader.Reader:
+class Request:
   connection_/Connection := ?
-  reader_ := null
 
   method/string
   path/string
@@ -27,7 +26,12 @@ class Request implements reader.Reader:
       headers.set "Host" connection_.host
 
   // Incoming request from an HTTP client like a browser, we are the server.
-  constructor.server .connection_ .reader_ .method .path .version .headers:
+  constructor.server .connection_ .body .method .path .version .headers:
+
+  content_length -> int?:
+    if body is ContentLengthReader:
+      return (body as ContentLengthReader).content_length
+    return null
 
   send:
     body_writer := connection_.send_headers
@@ -39,8 +43,5 @@ class Request implements reader.Reader:
     body_writer.close
     return connection_.read_response
 
-  read -> ByteArray?:
-    return reader_.read
-
   drain:
-    while read:
+    while body.read:

@@ -133,8 +133,10 @@ class Connection:
 class ContentLengthReader implements reader.Reader:
   reader_/reader.BufferedReader
   remaining_length_/int := ?
+  content_length/int
 
-  constructor .reader_ .remaining_length_:
+  constructor .reader_ .content_length:
+    remaining_length_ = content_length
 
   read -> ByteArray?:
     if remaining_length_ <= 0: return null
