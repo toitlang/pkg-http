@@ -100,7 +100,7 @@ class Connection:
       else if not headers.matches TE "identity":
         throw "No support for $TE: $(headers.single TE)"
 
-    return reader_
+    return ContentLengthReader reader_ 0
 
   // Optional whitespace is spaces and tabs.
   is_whitespace_ char:
