@@ -76,6 +76,8 @@ class ResponseWriter_ implements ResponseWriter:
     return headers_
 
   write_headers status_code/int:
+    if body_writer_: throw "headers already written"
+    write_headers_ status_code
 
   write data:
     write_headers_ STATUS_OK
@@ -88,6 +90,7 @@ class ResponseWriter_ implements ResponseWriter:
       headers
 
   close:
+    write_headers_ STATUS_OK
     body_writer_.close
     //   logger_.warn "partial response" --tags={
     //     "remaining_length": remaining_length_,

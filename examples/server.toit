@@ -12,9 +12,15 @@ main:
   network := net.open
   server := http.Server
   server.listen network 8080:: | request/http.Request writer/http.ResponseWriter |
-    ITEMS.do:
-      writer.write
-        json.encode {
-          "item": it,
-        }
-      writer.write "\n"
+    if request.path == "/empty":
+    else if request.path == "/json":
+      ITEMS.do:
+        writer.write
+          json.encode {
+            "item": it,
+          }
+        writer.write "\n"
+    else if request.path == "/headers":
+      writer.headers.set "Http-Test-Header" "going strong"
+    else if request.path == "/500":
+      writer.write_headers 500
