@@ -19,15 +19,17 @@ import .chunked
 class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
 
-  interface_/tcp.Interface
   read_timeout/Duration
   logger_/log.Logger
 
-  constructor .interface_ --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
+  constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
     logger_ = logger
 
-  listen port/int handler/Lambda:
-    server_socket := interface_.tcp_listen port
+  listen interface/tcp.Interface port/int handler/Lambda -> none:
+    server_socket := interface.tcp_listen port
+    listen server_socket handler
+
+  listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
       socket := server_socket.accept
       if not socket: continue
