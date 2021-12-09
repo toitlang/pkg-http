@@ -25,11 +25,11 @@ class Server:
   constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
     logger_ = logger
 
-  listen interface/tcp.Interface port/int handler/Lambda:
+  listen interface/tcp.Interface port/int handler/Lambda -> none:
     server_socket := interface.tcp_listen port
     listen server_socket handler
 
-  listen server_socket/tcp.ServerSocket handler/Lambda:
+  listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
       socket := server_socket.accept
       if not socket: continue
