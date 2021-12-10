@@ -42,7 +42,7 @@ class Server:
           logger.debug "client connected"
           e := catch:
             run_connection_ connection handler logger
-          close_logger := e ? logger.with_tag "error" e : logger
+          close_logger := e ? logger.with_tag "reason" e : logger
           close_logger.debug "client disconnected"
         finally:
           socket.close
