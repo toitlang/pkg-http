@@ -40,9 +40,10 @@ class Server:
           address := socket.peer_address
           logger := logger_.with_tag "peer" address
           logger.debug "client connected"
-          catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
+          e := catch:
             run_connection_ connection handler logger
-          logger.debug "client disconnected"
+          close_logger := e ? logger.with_tag "reason" e : logger
+          close_logger.debug "client disconnected"
         finally:
           socket.close
 
@@ -55,7 +56,8 @@ class Server:
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
       writer ::= ResponseWriter_ connection request_logger
-      handler.call request writer
+      catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
+        handler.call request writer
       // Drain unread content to get allow the connection to be reused.
       request.drain
       writer.close
@@ -92,9 +94,6 @@ class ResponseWriter_ implements ResponseWriter:
   close:
     write_headers_ STATUS_OK
     body_writer_.close
-    //   logger_.warn "partial response" --tags={
-    //     "remaining_length": remaining_length_,
-    //   }
 
 interface ResponseWriter:
   headers -> Headers
