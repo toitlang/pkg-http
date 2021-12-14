@@ -10,13 +10,25 @@ import tls
 import .request
 import .response
 import .connection
-import .tls_config
 
 class Client:
   interface_/tcp.Interface
-  tls_config/TlsConfig?
 
-  constructor .interface_ --.tls_config=null:
+  use_tls_ ::= false
+  certificate_/tls.Certificate? ::= null
+  server_name_/string? ::= null
+  root_certificates_/List ::= []
+
+  constructor .interface_:
+
+  constructor.tls .interface_
+      --root_certificates/List=[]
+      --server_name/string?=null
+      --certificate/tls.Certificate?=null:
+    use_tls_ = true
+    root_certificates_ = root_certificates
+    server_name_ = server_name
+    certificate_ = certificate
 
   get host/string path/string -> Response:
     connection := new_connection_ host --auto_close
@@ -30,9 +42,9 @@ class Client:
       port = int.parse host[index+1..]
       host = host[..index]
     socket := interface_.tcp_connect host port
-    if tls_config:
+    if use_tls_:
       socket = tls.Socket.client socket
-        --server_name=tls_config.server_name or host
-        --certificate=tls_config.certificate
-        --root_certificates=tls_config.root_certificates
+        --server_name=server_name_ or host
+        --certificate=certificate_
+        --root_certificates=root_certificates_
     return Connection socket --host=host --auto_close=auto_close

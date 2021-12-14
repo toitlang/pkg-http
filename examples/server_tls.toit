@@ -13,9 +13,9 @@ ITEMS := ["FOO", "BAR", "BAZ"]
 
 main:
   network := net.open
-  server := http.Server
-  tls_config := http.TlsConfig.server TLS_SERVER_CERT
-  server.listen network 8080 --tls_config=tls_config:: | request/http.Request writer/http.ResponseWriter |
+  server := http.Server.tls
+    --certificate=TLS_SERVER_CERT
+  server.listen network 8080:: | request/http.Request writer/http.ResponseWriter |
     if request.path == "/empty":
     else if request.path == "/json":
       ITEMS.do:

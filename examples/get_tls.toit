@@ -8,10 +8,10 @@ import net.x509
 
 main:
   network := net.open
-  client := http.Client network
-    --tls_config=http.TlsConfig.client --root_certificates=[SERVER_CERT]
+  client := http.Client.tls network
+    --root_certificates=[SERVER_CERT]
 
-  response := client.get "localhost:8080" "/"
+  response := client.get "localhost:8080" "/json"
   while data := response.read:
     print data.to_string
 
