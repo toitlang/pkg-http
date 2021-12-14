@@ -16,7 +16,6 @@ import .request
 import .response
 import .connection
 import .chunked
-import .tls_config
 
 class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
