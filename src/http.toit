@@ -5,5 +5,6 @@
 import .client
 import .server
 import .request
+import .tls_config
 
 export *

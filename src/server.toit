@@ -8,6 +8,7 @@ import bytes
 import monitor
 import log
 import writer
+import tls
 
 import .status_codes
 import .headers
@@ -15,6 +16,7 @@ import .request
 import .response
 import .connection
 import .chunked
+import .tls_config
 
 class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
@@ -25,16 +27,21 @@ class Server:
   constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
     logger_ = logger
 
-  listen interface/tcp.Interface port/int handler/Lambda -> none:
+  listen interface/tcp.Interface port/int handler/Lambda --tls_config/TlsConfig?=null -> none:
     server_socket := interface.tcp_listen port
-    listen server_socket handler
+    listen server_socket handler --tls_config=tls_config
 
-  listen server_socket/tcp.ServerSocket handler/Lambda -> none:
+  listen server_socket/tcp.ServerSocket handler/Lambda --tls_config/TlsConfig?=null -> none:
     while true:
-      socket := server_socket.accept
-      if not socket: continue
+      accepted := server_socket.accept
+      if not accepted: continue
 
       task --background::
+        socket := accepted
+        if tls_config:
+          socket = tls.Socket.server socket
+            --certificate=tls_config.certificate
+
         connection := Connection socket
         try:
           address := socket.peer_address
