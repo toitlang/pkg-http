@@ -5,23 +5,30 @@
 import net
 import net.tcp
 import reader
+import tls
 
 import .request
 import .response
 import .connection
 
-class SingleReader implements reader.Reader:
-  data/any := ?
-  constructor .data:
-  read:
-    d := data
-    data = null
-    return d
-
 class Client:
   interface_/tcp.Interface
 
+  use_tls_ ::= false
+  certificate_/tls.Certificate? ::= null
+  server_name_/string? ::= null
+  root_certificates_/List ::= []
+
   constructor .interface_:
+
+  constructor.tls .interface_
+      --root_certificates/List=[]
+      --server_name/string?=null
+      --certificate/tls.Certificate?=null:
+    use_tls_ = true
+    root_certificates_ = root_certificates
+    server_name_ = server_name
+    certificate_ = certificate
 
   get host/string path/string -> Response:
     connection := new_connection_ host --auto_close
@@ -35,4 +42,9 @@ class Client:
       port = int.parse host[index+1..]
       host = host[..index]
     socket := interface_.tcp_connect host port
+    if use_tls_:
+      socket = tls.Socket.client socket
+        --server_name=server_name_ or host
+        --certificate=certificate_
+        --root_certificates=root_certificates_
     return Connection socket --host=host --auto_close=auto_close

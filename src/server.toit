@@ -8,6 +8,7 @@ import bytes
 import monitor
 import log
 import writer
+import tls
 
 import .status_codes
 import .headers
@@ -20,10 +21,24 @@ class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
 
   read_timeout/Duration
+
   logger_/log.Logger
+  use_tls_/bool ::= false
+  certificate_/tls.Certificate? ::= null
+  root_certificates_/List ::= []
 
   constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
     logger_ = logger
+
+  constructor.tls
+      --.read_timeout=DEFAULT_READ_TIMEOUT
+      --logger=log.default
+      --certificate/tls.Certificate
+      --root_certificates/List=[]:
+    logger_ = logger
+    use_tls_ = true
+    certificate_ = certificate
+    root_certificates_ = root_certificates
 
   listen interface/tcp.Interface port/int handler/Lambda -> none:
     server_socket := interface.tcp_listen port
@@ -31,10 +46,16 @@ class Server:
 
   listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
-      socket := server_socket.accept
-      if not socket: continue
+      accepted := server_socket.accept
+      if not accepted: continue
 
       task --background::
+        socket := accepted
+        if use_tls_:
+          socket = tls.Socket.server socket
+            --certificate=certificate_
+            --root_certificates=root_certificates_
+
         connection := Connection socket
         try:
           address := socket.peer_address
