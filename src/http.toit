@@ -5,5 +5,8 @@
 import .client
 import .server
 import .request
+import .response
+import .headers
+import .method
 
 export *

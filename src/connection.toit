@@ -23,26 +23,23 @@ class Connection:
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 
-  // reader:
-  //   result := reader_
-  //   reader_ = null
-  //   return result
-
-  new_request method url -> Request:
-    return Request.client this method url
+  new_request method/string path/string headers/Headers -> Request:
+    return Request.client this method path headers
 
   close:
     return socket_.close
 
   send_headers status/string headers/Headers -> BodyWriter:
-    body_writer := null
-    content_length := headers.single "Content-Length"
-    if content_length:
-      length := int.parse content_length
-      body_writer = ContentLengthWriter this writer_ length
-    else:
-      headers.add "Transfer-Encoding" "chunked"
-      body_writer = ChunkedWriter writer_
+    body_writer/BodyWriter := ContentLengthWriter this writer_ 0
+
+    if not headers.matches "Connection" "Upgrade":
+      content_length := headers.single "Content-Length"
+      if content_length:
+        length := int.parse content_length
+        body_writer = ContentLengthWriter this writer_ length
+      else:
+        headers.add "Transfer-Encoding" "chunked"
+        body_writer = ChunkedWriter writer_
 
     socket_.set_no_delay false
 
@@ -81,26 +78,31 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    reader := body_reader_ headers
+    body := body_reader_ headers
 
-    return Response.client this reader version status_code status_message headers
+    return Response this version status_code status_message headers body
 
   body_reader_ headers/Headers -> reader.Reader:
+    if headers.matches "Connection" "upgrade":
+      // If connection was upgraded, we don't know the encoding. Use a pure
+      // pass-through reader.
+      return reader_
+
     content_length := headers.single("Content-Length")
     if content_length:
       length := int.parse content_length
-      return ContentLengthReader reader_ length
+      return ContentLengthReader this reader_ length
 
     // The only transfer encodings we support are 'identity' and 'chunked',
     // which are both required by HTTP/1.1.
     TE := "Transfer-Encoding"
     if headers.single TE:
       if headers.starts_with TE "chunked":
-        return ChunkedReader reader_
+        return ChunkedReader this reader_
       else if not headers.matches TE "identity":
         throw "No support for $TE: $(headers.single TE)"
 
-    return ContentLengthReader reader_ 0
+    return ContentLengthReader this reader_ 0
 
   // Optional whitespace is spaces and tabs.
   is_whitespace_ char:
@@ -130,16 +132,22 @@ class Connection:
 
     return headers
 
+  response_done_:
+    if auto_close_: close
+
 class ContentLengthReader implements reader.Reader:
+  connection_/Connection
   reader_/reader.BufferedReader
   remaining_length_/int := ?
   content_length/int
 
-  constructor .reader_ .content_length:
+  constructor .connection_ .reader_ .content_length:
     remaining_length_ = content_length
 
   read -> ByteArray?:
-    if remaining_length_ <= 0: return null
+    if remaining_length_ <= 0:
+      connection_.response_done_
+      return null
     data := reader_.read --max_size=remaining_length_
     if not data: throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
     remaining_length_ -= data.size

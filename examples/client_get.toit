@@ -10,5 +10,5 @@ main:
   client := http.Client network
 
   response := client.get "localhost:8080" "/"
-  while data := response.read:
+  while data := response.body.read:
     print data.to_string

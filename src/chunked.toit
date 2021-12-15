@@ -13,11 +13,12 @@ import .connection
 // returns ByteArrays.  End of stream is indicated with a null return value
 // from read.
 class ChunkedReader implements reader.Reader:
+  connection_/Connection
   reader_/reader.BufferedReader? := ?
   left_in_chunk_ := 0 // How much more raw data we are waiting for before the next size line.
   done_ := false
 
-  constructor .reader_:
+  constructor .connection_ .reader_:
 
   /**
   Returns the underlying reader, which may have buffered up data.
@@ -31,7 +32,9 @@ class ChunkedReader implements reader.Reader:
 
   read -> ByteArray?:
     while true:
-      if done_: return null
+      if done_:
+        connection_.response_done_
+        return null
       if left_in_chunk_ > 0:
         result := reader_.read --max_size=left_in_chunk_
         if not result: throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
