@@ -12,7 +12,7 @@ main:
     --root_certificates=[SERVER_CERT]
 
   response := client.get "localhost:8080" "/json"
-  while data := response.read:
+  while data := response.body.read:
     print data.to_string
 
 SERVER_CERT ::= x509.Certificate.parse """
