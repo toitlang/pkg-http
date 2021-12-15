@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import net
+import net.tcp
 import reader
 import writer
 
@@ -10,42 +12,31 @@ import .headers
 import .chunked
 import .request
 
-class Response implements reader.Reader:
+class Response:
   connection_/Connection
-  reader_/reader.Reader
   headers ::= Headers
   version/string
   status_code/int
   status_message/string
+  body/reader.Reader
 
-  constructor.client .connection_ .reader_ .version .status_code .status_message .headers:
+  constructor .connection_ .version .status_code .status_message .headers .body:
 
   // Return a reader & writer object, used to send raw data on the connection.
-  detach:
-    return DetachedSocket reader_ connection_.socket_
+  detach -> tcp.Socket:
+    return DetachedSocket connection_.socket_ body
 
-  read:
-    data := reader_.read
-    if data: return data
-    if connection_.auto_close_: connection_.close
-    return null
+class DetachedSocket implements tcp.Socket:
+  socket_/tcp.Socket
+  reader_/reader.Reader?
 
-class DetachedSocket:
-  reader_ := ?
-  writer_ := ?
-  socket_ := ?
+  constructor .socket_ .reader_:
 
-  constructor .reader_ .socket_:
-    writer_ = writer.Writer socket_
-
-  read:
-    return reader_.read
-
-  write data from = 0 to = data.size:
-    return writer_.write data from to
-
-  close_write:
-    return socket_.close_write
-
-  close:
-    return socket_.close
+  read -> ByteArray?: return reader_.read
+  write data from=0 to=data.size: return socket_.write data from to
+  close_write: return socket_.close_write
+  close: return socket_.close
+  local_address -> net.SocketAddress: return socket_.local_address
+  peer_address -> net.SocketAddress: return socket_.peer_address
+  set_no_delay enabled/bool: socket_.set_no_delay enabled
+  mtu -> int: return socket_.mtu

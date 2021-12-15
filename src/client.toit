@@ -10,6 +10,8 @@ import tls
 import .request
 import .response
 import .connection
+import .method
+import .headers
 
 class Client:
   interface_/tcp.Interface
@@ -30,9 +32,14 @@ class Client:
     server_name_ = server_name
     certificate_ = certificate
 
-  get host/string path/string -> Response:
+  new_request method/string host/string path/string --headers/Headers=Headers -> Request:
+    connection := new_connection_ host
+    request := connection.new_request method path headers
+    return request
+
+  get host/string path/string --headers/Headers=Headers -> Response:
     connection := new_connection_ host --auto_close
-    request := connection.new_request "GET" path
+    request := connection.new_request GET path headers
     return request.send
 
   new_connection_ host/string --auto_close=false -> Connection:

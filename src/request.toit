@@ -15,13 +15,13 @@ class Request:
 
   method/string
   path/string
+  headers/Headers
   version/string ::= "HTTP/1.1"
-  headers/Headers ::= Headers
 
   body/reader.Reader? := null
 
   // Outgoing request to an HTTP server, we are acting like a client.
-  constructor.client .connection_ .method .path:
+  constructor.client .connection_ .method .path .headers:
     if connection_.host:
       headers.set "Host" connection_.host
 
