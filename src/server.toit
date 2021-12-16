@@ -57,29 +57,34 @@ class Server:
             --root_certificates=root_certificates_
 
         connection := Connection socket
+        detached := false
         try:
           address := socket.peer_address
           logger := logger_.with_tag "peer" address
           logger.debug "client connected"
           e := catch:
-            run_connection_ connection handler logger
+            detached = run_connection_ connection handler logger
           close_logger := e ? logger.with_tag "reason" e : logger
-          close_logger.debug "client disconnected"
+          if detached:
+            close_logger.debug "client socket detached"
+          else:
+            close_logger.debug "client disconnected"
         finally:
-          socket.close
+          if not detached: socket.close
 
-  run_connection_ connection/Connection handler/Lambda logger/log.Logger:
+  run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:
       request := null
       with_timeout read_timeout:
         request = connection.read_request
-      if not request: return
+      if not request: return false
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
-      writer ::= ResponseWriter_ connection request_logger
+      writer ::= ResponseWriter_ connection request request_logger
       catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
         handler.call request writer
       // Drain unread content to get allow the connection to be reused.
+      if writer.detached_: return true
       request.drain
       writer.close
 
@@ -87,11 +92,13 @@ class ResponseWriter_ implements ResponseWriter:
   static VERSION ::= "HTTP/1.1"
 
   connection_/Connection
+  request_/Request
   logger_/log.Logger
   headers_/Headers
   body_writer_/BodyWriter? := null
+  detached_/bool := false
 
-  constructor .connection_ .logger_:
+  constructor .connection_ .request_ .logger_:
     headers_ = Headers
 
   headers -> Headers:
@@ -116,7 +123,12 @@ class ResponseWriter_ implements ResponseWriter:
     write_headers_ STATUS_OK
     body_writer_.close
 
+  detach -> tcp.Socket:
+    detached_ = true
+    return DetachedSocket_ connection_.socket_ request_.body
+
 interface ResponseWriter:
   headers -> Headers
   write_headers status_code/int
   write data
+  detach -> tcp.Socket
