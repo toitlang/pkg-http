@@ -43,7 +43,7 @@ class Client:
     return request.send
 
   new_connection_ host/string --auto_close=false -> Connection:
-    port := 80
+    port := use_tls_ ? 443 : 80
     index := host.index_of ":"
     if index >= 0:
       port = int.parse host[index+1..]
