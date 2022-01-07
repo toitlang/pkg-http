@@ -105,22 +105,22 @@ class ResponseWriter_ implements ResponseWriter:
     if body_writer_: throw "headers already written"
     return headers_
 
-  write_headers status_code/int:
+  write_headers status_code/int --message/string?=null:
     if body_writer_: throw "headers already written"
-    write_headers_ status_code
+    write_headers_ status_code message
 
   write data:
-    write_headers_ STATUS_OK
+    write_headers_ STATUS_OK null
     body_writer_.write data
 
-  write_headers_ status_code/int:
+  write_headers_ status_code/int message/string?:
     if body_writer_: return
     body_writer_ = connection_.send_headers
-      "$VERSION $status_code $(status_message status_code)\r\n"
+      "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
       headers
 
   close:
-    write_headers_ STATUS_OK
+    write_headers_ STATUS_OK null
     body_writer_.close
 
   detach -> tcp.Socket:
@@ -129,6 +129,6 @@ class ResponseWriter_ implements ResponseWriter:
 
 interface ResponseWriter:
   headers -> Headers
-  write_headers status_code/int
+  write_headers status_code/int --message/string?=null
   write data
   detach -> tcp.Socket
