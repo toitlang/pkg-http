@@ -24,3 +24,5 @@ main:
       writer.headers.set "Http-Test-Header" "going strong"
     else if request.path == "/500":
       writer.write_headers 500
+    else if request.path == "/599":
+      writer.write_headers 599 --message="Dazed and confused"
