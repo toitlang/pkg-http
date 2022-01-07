@@ -32,18 +32,17 @@ class Client:
     server_name_ = server_name
     certificate_ = certificate
 
-  new_request method/string host/string path/string --headers/Headers=Headers -> Request:
-    connection := new_connection_ host
+  new_request method/string host/string --port/int=default_port path/string --headers/Headers=Headers -> Request:
+    connection := new_connection_ host port
     request := connection.new_request method path headers
     return request
 
-  get host/string path/string --headers/Headers=Headers -> Response:
-    connection := new_connection_ host --auto_close
+  get host/string --port/int=default_port path/string --headers/Headers=Headers -> Response:
+    connection := new_connection_ host port --auto_close
     request := connection.new_request GET path headers
     return request.send
 
-  new_connection_ host/string --auto_close=false -> Connection:
-    port := use_tls_ ? 443 : 80
+  new_connection_ host/string port/int--auto_close=false -> Connection:
     index := host.index_of ":"
     if index >= 0:
       port = int.parse host[index+1..]
@@ -55,3 +54,6 @@ class Client:
         --certificate=certificate_
         --root_certificates=root_certificates_
     return Connection socket --host=host --auto_close=auto_close
+
+  default_port -> int:
+    return use_tls_ ? 443 : 80
