@@ -42,7 +42,7 @@ class Client:
     request := connection.new_request GET path headers
     return request.send
 
-  new_connection_ host/string port/int--auto_close=false -> Connection:
+  new_connection_ host/string port/int --auto_close=false -> Connection:
     index := host.index_of ":"
     if index >= 0:
       port = int.parse host[index+1..]
