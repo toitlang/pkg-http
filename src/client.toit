@@ -94,6 +94,11 @@ class Client:
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
+  The returned $Request should be sent with $Request.send.
+
+  The connection is automatically closed when the response's body ($Response.body) is
+    completely read.
+
   A port can be provided in two ways:
   - using the $port parameter, or
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
@@ -101,14 +106,14 @@ class Client:
   If neither is specified then the $default_port is used.
   */
   new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> Request:
-    connection := new_connection_ host port
+    connection := new_connection_ host port --auto_close
     request := connection.new_request method path headers
     return request
 
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
 
-  The connection is automatically closed when the response is completely drained.
+  The connection is automatically closed when the response is completely read.
 
   A port can be provided in two ways:
   - using the $port parameter, or
