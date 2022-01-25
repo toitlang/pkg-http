@@ -48,7 +48,8 @@ class Client:
       given_port := port
       port = int.parse host[index+1..]
       host = host[..index]
-      if port != given_port: throw "Conflicting ports given"
+      if given_port and port != given_port:
+        throw "Conflicting ports given"
 
     if not port: port = default_port
     socket := interface_.tcp_connect host port
