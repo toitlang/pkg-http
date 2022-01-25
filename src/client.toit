@@ -6,6 +6,8 @@ import net
 import net.tcp
 import reader
 import tls
+import bytes
+import encoding.json
 
 import .request
 import .response
@@ -125,6 +127,49 @@ class Client:
     connection := new_connection_ host port --auto_close
     request := connection.new_request GET path headers
     return request.send
+
+  /**
+  Posts data on $path for the given server ($host, $port) using the $POST method.
+
+  The connection is automatically closed when the response is completely read.
+
+  A port can be provided in two ways:
+  - using the $port parameter, or
+  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+
+  If neither is specified then the $default_port is used.
+
+  # Advanced
+  If the data can be generated dynamically, it's more efficient to create a new
+    request with $new_request and to set the $Request.body to a reader that produces
+    the data only when needed.
+  */
+  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+    connection := new_connection_ host port --auto_close
+    request := connection.new_request POST path headers
+    request.body = bytes.Reader data
+    return request.send
+
+  /**
+  Posts the $object on $path for the given server ($host, $port) using the $POST method.
+
+  Encodes the $object first as JSON.
+
+  Sets the 'Content-type' header to "application/json"
+
+  The connection is automatically closed when the response is completely read.
+
+  A port can be provided in two ways:
+  - using the $port parameter, or
+  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+
+  If neither is specified then the $default_port is used.
+  */
+  post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+    // TODO(florian): we should create the json dynamically.
+    encoded := json.encode object
+    headers.add "Content-type" "application/json"
+    return post encoded --host=host --port=port --path=path --headers=headers
 
   new_connection_ host/string port/int? --auto_close=false -> Connection:
     index := host.index_of ":"
