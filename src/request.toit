@@ -33,7 +33,7 @@ class Request:
       return (body as ContentLengthReader).content_length
     return null
 
-  send:
+  send -> Response:
     body_writer := connection_.send_headers
       "$method $path $version\r\n"
       headers

@@ -69,7 +69,7 @@ class Connection:
 
     return Request.server this reader method path version headers
 
-  read_response:
+  read_response -> Response:
     version := reader_.read_string (reader_.index_of_or_throw ' ')
     reader_.skip 1
     status_code := int.parse (reader_.read_string (reader_.index_of_or_throw ' '))
