@@ -32,21 +32,26 @@ class Client:
     server_name_ = server_name
     certificate_ = certificate
 
-  new_request method/string host/string --port/int=default_port path/string --headers/Headers=Headers -> Request:
+  new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> Request:
     connection := new_connection_ host port
     request := connection.new_request method path headers
     return request
 
-  get host/string --port/int=default_port path/string --headers/Headers=Headers -> Response:
+  get host/string --port/int?=null path/string --headers/Headers=Headers -> Response:
     connection := new_connection_ host port --auto_close
     request := connection.new_request GET path headers
     return request.send
 
-  new_connection_ host/string port/int --auto_close=false -> Connection:
+  new_connection_ host/string port/int? --auto_close=false -> Connection:
     index := host.index_of ":"
     if index >= 0:
+      given_port := port
       port = int.parse host[index+1..]
       host = host[..index]
+      if given_port and port != given_port:
+        throw "Conflicting ports given"
+
+    if not port: port = default_port
     socket := interface_.tcp_connect host port
     if use_tls_:
       socket = tls.Socket.client socket
