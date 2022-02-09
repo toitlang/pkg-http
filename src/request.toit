@@ -34,8 +34,9 @@ class Request:
     return null
 
   send -> Response:
+    slash := (path.starts_with "/") ? "" : "/"
     body_writer := connection_.send_headers
-      "$method $path $version\r\n"
+      "$method $slash$path $version\r\n"
       headers
     if body:
       while data := body.read:
