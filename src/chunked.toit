@@ -71,16 +71,18 @@ class ChunkedWriter implements BodyWriter:
     if data.size == 0: return 0
     write_header_ data.size
     writer_.write data
-    writer_.write CRLF_
+    // Once we've sent the data, the other side might conclude that
+    // they have gotten everything they need, so we don't want to throw
+    // an exception on writing the final CRLF.
+    catch: writer_.write CRLF_
     return data.size
 
   close:
-    writer_.write "0"
-    // Once we've sent the last size, the remaining
-    // transmitted information is 100% redundant, so
-    // we don't want to throw exceptions if the other
-    // side closes the connection at this point.
+    // Once we've sent the last chunk, the remaining transmitted information
+    // is redundant, so we don't want to throw exceptions if the other side
+    // closes the connection at this point.
     catch:
+      writer_.write "0"
       writer_.write CRLF_
       writer_.write CRLF_
 
