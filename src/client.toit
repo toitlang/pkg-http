@@ -155,7 +155,7 @@ class Client:
 
   Encodes the $object first as JSON.
 
-  Sets the 'Content-type' header to "application/json"
+  Sets the 'Content-type' header to "application/json".
 
   The connection is automatically closed when the response is completely read.
 
@@ -170,6 +170,86 @@ class Client:
     encoded := json.encode object
     headers.add "Content-type" "application/json"
     return post encoded --host=host --port=port --path=path --headers=headers
+
+  /**
+  Posts the $object on $path for the given server ($host, $port) using the $POST method.
+
+  Encodes the $map using URL encoding, like an HTML form submit button.
+    For example: "from=123&to=567".
+
+  The keys of the $map should be strings.
+
+  If the values of the $map are not strings or byte arrays they are converted
+    to strings by calling stringify on them.
+
+  Sets the 'Content-type' header to "application/x-www-form-urlencoded".
+
+  The connection is automatically closed when the response is completely read.
+
+  A port can be provided in two ways:
+  - using the $port parameter, or
+  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+
+  If neither is specified then the $default_port is used.
+  */
+  post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+    buffer := bytes.Buffer
+    first := true
+    map.do: | key value |
+      if key is not string: throw "WRONG_OBJECT_TYPE"
+      if value is not ByteArray:
+        value = value.stringify
+        if value is not string: throw "WRONG_OBJECT_TYPE"
+      if first:
+        first = false
+      else:
+        buffer.write "&"
+      buffer.write
+        url_encode_ key
+      buffer.write "="
+      buffer.write
+        url_encode_ value
+    encoded := buffer.bytes
+    headers.add "Content-type" "application/x-www-form-urlencoded"
+    return post encoded --host=host --port=port --path=path --headers=headers
+
+  // TODO: This is a copy of the code in the standard lib/encoding/url.toit.
+  // Remove when an SDK release has made this available to the HTTP package.
+
+  static NEEDS_ENCODING_ ::= ByteArray '~' - '-' + 1:
+    c := it + '-'
+    (c == '-' or c == '_' or c == '.' or c == '~' or '0' <= c <= '9' or 'A' <= c <= 'Z' or 'a' <= c <= 'z') ? 0 : 1
+
+  // Takes an ASCII string or a byte array.
+  // Counts the number of bytes that need escaping.
+  count_escapes_ data -> int:
+    count := 0
+    table := NEEDS_ENCODING_
+    data.do: | c |
+      if not '-' <= c <= '~':
+        count++
+      else if table[c - '-'] == 1:
+        count++
+    return count
+
+  // Takes an ASCII string or a byte array.
+  url_encode_ from -> any:
+    if from is string and from.size != (from.size --runes):
+      from = from.to_byte_array
+    escaped := count_escapes_ from
+    if escaped == 0: return from
+    result := ByteArray from.size + escaped * 2
+    pos := 0
+    table := NEEDS_ENCODING_
+    from.do: | c |
+      if not '-' <= c <= '~' or table[c - '-'] == 1:
+        result[pos] = '%'
+        result[pos + 1] = "0123456789ABCDEF"[c >> 4]
+        result[pos + 2] = "0123456789ABCDEF"[c & 0xf]
+        pos += 3
+      else:
+        result[pos++] = c
+    return result
 
   new_connection_ host/string port/int? --auto_close=false -> Connection:
     index := host.index_of ":"
