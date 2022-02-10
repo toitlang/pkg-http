@@ -172,7 +172,7 @@ class Client:
     return post encoded --host=host --port=port --path=path --headers=headers
 
   /**
-  Posts the $object on $path for the given server ($host, $port) using the $POST method.
+  Posts the $map on $path for the given server ($host, $port) using the $POST method.
 
   Encodes the $map using URL encoding, like an HTML form submit button.
     For example: "from=123&to=567".
