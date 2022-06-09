@@ -177,7 +177,26 @@ class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket
   reader_/reader.Reader?
 
+  // TODO(kasper): For now, it is necessary to keep track
+  // of whether or not the TCP_NODELAY option has been enabled.
+  // This will go away with an upgraded Toit SDK where the
+  // underlying tcp.Socket support the $no_delay getter.
+  no_delay_/bool? := null
+
   constructor .socket_ .reader_:
+
+  // TODO(kasper): Remove this. Here for backwards compatibility.
+  set_no_delay enabled/bool: socket_.set_no_delay enabled
+
+  no_delay -> bool:
+    if no_delay_ == null:
+      set_no_delay false
+      no_delay_ = false
+    return no_delay_
+
+  no_delay= value/bool -> none:
+    set_no_delay value
+    no_delay_ = value
 
   read -> ByteArray?: return reader_.read
   write data from=0 to=data.size: return socket_.write data from to
@@ -185,5 +204,4 @@ class DetachedSocket_ implements tcp.Socket:
   close: return socket_.close
   local_address -> net.SocketAddress: return socket_.local_address
   peer_address -> net.SocketAddress: return socket_.peer_address
-  set_no_delay enabled/bool: socket_.set_no_delay enabled
   mtu -> int: return socket_.mtu
