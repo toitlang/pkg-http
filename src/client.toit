@@ -62,6 +62,11 @@ CERTIFICATE ::= certificate_roots.AMAZON_ROOT_CA_1
 ```
 */
 class Client:
+  /**
+  The maximum number of redirects to follow if 'follow_redirect' is true for $get requests.
+  */
+  static MAX_REDIRECTS /int ::= 20
+
   interface_/tcp.Interface
 
   use_tls_ ::= false
@@ -112,6 +117,21 @@ class Client:
     request := connection.new_request method path headers
     return request
 
+  // Extracts the redirection target: host and path.
+  extract_redirect_target_ headers/Headers -> List:
+    redirection_target /string := (headers.get "Location")[0]
+    if redirection_target.starts_with "http://":
+      redirection_target = redirection_target[7..]
+    else if redirection_target.starts_with "https://":
+      redirection_target = redirection_target[8..]
+    else:
+      throw "Unexpected redirection target: $redirection_target"
+    slash_pos := redirection_target.index_of "/"
+    if slash_pos < 0: throw "unexpected url"
+    host := redirection_target[0..slash_pos]
+    path := redirection_target[slash_pos+1..]
+    return [host, path]
+
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
 
@@ -123,10 +143,30 @@ class Client:
 
   If neither is specified then the $default_port is used.
   */
-  get host/string --port/int?=null path/string --headers/Headers=Headers -> Response:
-    connection := new_connection_ host port --auto_close
-    request := connection.new_request GET path headers
-    return request.send
+  get host/string --port/int?=null path/string --headers/Headers=Headers --follow_redirect/bool=true -> Response:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close
+      request := connection.new_request GET path headers
+      response := request.send
+
+      if follow_redirect and
+          (response.status_code == 301       // Moved Permanently.
+            or response.status_code == 302   // Found.
+            or response.status_code == 303   // See Other.
+            or response.status_code == 307   // Temporary Redirect.
+            or response.status_code == 308): // Permanent Redirect.
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        // TODO(florian): should we send the same headers?
+        continue.repeat
+      else:
+        return response
+
+    throw "Too many redirects"
+
 
   /**
   Posts data on $path for the given server ($host, $port) using the $POST method.
@@ -144,11 +184,35 @@ class Client:
     request with $new_request and to set the $Request.body to a reader that produces
     the data only when needed.
   */
-  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
-    connection := new_connection_ host port --auto_close
-    request := connection.new_request POST path headers
-    request.body = bytes.Reader data
-    return request.send
+  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirect/bool=true -> Response:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close
+      request := connection.new_request POST path headers
+      request.body = bytes.Reader data
+      response := request.send
+
+      if follow_redirect and
+          (response.status_code == 301       // Moved Permanently.
+            or response.status_code == 302   // Found.
+            or response.status_code == 307   // Temporary Redirect.
+            or response.status_code == 308): // Permanent Redirect.
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        continue.repeat
+      else if follow_redirect and response.status_code == 303: // See Other.
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        // TODO(florian): should we send the same headers?
+        return get host path --headers=headers
+      else:
+        return response
+
+    throw "Too many redirects"
 
   /**
   Posts the $object on $path for the given server ($host, $port) using the $POST method.
@@ -165,7 +229,7 @@ class Client:
 
   If neither is specified then the $default_port is used.
   */
-  post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+  post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirect/bool=true -> Response:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
     headers.add "Content-type" "application/json"
@@ -192,7 +256,7 @@ class Client:
 
   If neither is specified then the $default_port is used.
   */
-  post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+  post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirect/bool=true -> Response:
     buffer := bytes.Buffer
     first := true
     map.do: | key value |
