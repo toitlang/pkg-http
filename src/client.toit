@@ -14,6 +14,7 @@ import .response
 import .connection
 import .method
 import .headers
+import .status_codes
 
 /**
 An HTTP v1.1 client.
@@ -62,6 +63,11 @@ CERTIFICATE ::= certificate_roots.AMAZON_ROOT_CA_1
 ```
 */
 class Client:
+  /**
+  The maximum number of redirects to follow if 'follow_redirect' is true for $get and $post requests.
+  */
+  static MAX_REDIRECTS /int ::= 20
+
   interface_/tcp.Interface
 
   use_tls_ ::= false
@@ -112,6 +118,31 @@ class Client:
     request := connection.new_request method path headers
     return request
 
+  starts_with_ignore_case_ str/string needle/string -> bool:
+    if str.size < needle.size: return false
+    for i := 0; i < needle.size; i++:
+      a := str[i]
+      b := needle[i]
+      if 'a' <= a <= 'z': a -= 'a' - 'A'
+      if 'a' <= b <= 'z': b -= 'a' - 'A'
+      if a != b: return false
+    return true
+
+  // Extracts the redirection target: host and path.
+  extract_redirect_target_ headers/Headers -> List:
+    redirection_target /string := (headers.get "Location")[0]
+    if starts_with_ignore_case_ redirection_target "http://":
+      redirection_target = redirection_target[7..]
+    else if starts_with_ignore_case_ redirection_target "https://":
+      redirection_target = redirection_target[8..]
+    else:
+      throw "Unexpected redirection target: $redirection_target"
+    slash_pos := redirection_target.index_of "/"
+    if slash_pos < 0: throw "Unexpected url"
+    host := redirection_target[0..slash_pos]
+    path := redirection_target[slash_pos+1..]
+    return [host, path]
+
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
 
@@ -122,11 +153,32 @@ class Client:
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
 
   If neither is specified then the $default_port is used.
+
+  If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
-  get host/string --port/int?=null path/string --headers/Headers=Headers -> Response:
-    connection := new_connection_ host port --auto_close
-    request := connection.new_request GET path headers
-    return request.send
+  get host/string --port/int?=null path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close
+      request := connection.new_request GET path headers
+      response := request.send
+
+      if follow_redirects and
+          (response.status_code == STATUS_MOVED_PERMANENTLY
+            or response.status_code == STATUS_FOUND
+            or response.status_code == STATUS_SEE_OTHER
+            or response.status_code == STATUS_TEMPORARY_REDIRECT
+            or response.status_code == STATUS_PERMANENT_REDIRECT):
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        continue.repeat
+      else:
+        return response
+
+    throw "Too many redirects"
+
 
   /**
   Posts data on $path for the given server ($host, $port) using the $POST method.
@@ -139,16 +191,41 @@ class Client:
 
   If neither is specified then the $default_port is used.
 
+  If $follow_redirects is true, follows redirects (when the status code is 3xx).
+
   # Advanced
   If the data can be generated dynamically, it's more efficient to create a new
     request with $new_request and to set the $Request.body to a reader that produces
     the data only when needed.
   */
-  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
-    connection := new_connection_ host port --auto_close
-    request := connection.new_request POST path headers
-    request.body = bytes.Reader data
-    return request.send
+  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close
+      request := connection.new_request POST path headers
+      request.body = bytes.Reader data
+      response := request.send
+
+      if follow_redirects and
+          (response.status_code == STATUS_MOVED_PERMANENTLY
+            or response.status_code == STATUS_FOUND
+            or response.status_code == STATUS_TEMPORARY_REDIRECT
+            or response.status_code == STATUS_PERMANENT_REDIRECT):
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        continue.repeat
+      else if follow_redirects and response.status_code == STATUS_SEE_OTHER:
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        return get host path --headers=headers
+      else:
+        return response
+
+    throw "Too many redirects"
 
   /**
   Posts the $object on $path for the given server ($host, $port) using the $POST method.
@@ -164,12 +241,14 @@ class Client:
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
 
   If neither is specified then the $default_port is used.
+
+  If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
-  post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+  post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
     headers.add "Content-type" "application/json"
-    return post encoded --host=host --port=port --path=path --headers=headers
+    return post encoded --host=host --port=port --path=path --headers=headers --follow_redirects=follow_redirects
 
   /**
   Posts the $map on $path for the given server ($host, $port) using the $POST method.
@@ -191,8 +270,10 @@ class Client:
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
 
   If neither is specified then the $default_port is used.
+
+  If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
-  post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers -> Response:
+  post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
     buffer := bytes.Buffer
     first := true
     map.do: | key value |
@@ -211,7 +292,7 @@ class Client:
         url_encode_ value
     encoded := buffer.bytes
     headers.add "Content-type" "application/x-www-form-urlencoded"
-    return post encoded --host=host --port=port --path=path --headers=headers
+    return post encoded --host=host --port=port --path=path --headers=headers --follow_redirects=follow_redirects
 
   // TODO: This is a copy of the code in the standard lib/encoding/url.toit.
   // Remove when an SDK release has made this available to the HTTP package.
