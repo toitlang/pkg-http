@@ -29,7 +29,7 @@ test_get network/net.Interface:
   response := client.get HOST PATH_GET
   check_get_response response --scheme="http"
 
-  response = client.get HOST PATH_GET --no-follow_redirect
+  response = client.get HOST PATH_GET --no-follow_redirects
   expect_equals 302 response.status_code
   drain response
 
@@ -44,7 +44,31 @@ test_post network/net.Interface:
   decoded := json.decode data
   expect_equals "hello" decoded["data"]
 
-  response = client.post --host=HOST --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirect
+  response = client.post --host=HOST --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
+  expect_equals 302 response.status_code
+  drain response
+
+  response = client.post_json --host=HOST --path=PATH_POST "hello"
+  data = #[]
+  while chunk := response.body.read:
+    data += chunk
+  expect_equals 200 response.status_code
+  decoded = json.decode data
+  expect_equals "hello" (json.decode decoded["data"].to_byte_array)
+
+  response = client.post_json --host=HOST --path=PATH_POST "hello" --no-follow_redirects
+  expect_equals 302 response.status_code
+  drain response
+
+  response = client.post_form --host=HOST --path=PATH_POST { "toit": "hello" }
+  data = #[]
+  while chunk := response.body.read:
+    data += chunk
+  expect_equals 200 response.status_code
+  decoded = json.decode data
+  expect_equals "hello" decoded["form"]["toit"]
+
+  response = client.post_form --host=HOST --path=PATH_POST { "toit": "hello" } --no-follow_redirects
   expect_equals 302 response.status_code
   drain response
 
@@ -57,7 +81,7 @@ test_post network/net.Interface:
   decoded = json.decode data
   expect decoded["args"].is_empty
 
-  response = client.post --host=HOST --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow_redirect
+  response = client.post --host=HOST --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 303 response.status_code
   drain response
 
@@ -69,4 +93,3 @@ main:
   test_post network
 
   network.close
-
