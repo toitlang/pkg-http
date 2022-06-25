@@ -35,6 +35,11 @@ class Request:
 
   send -> Response:
     slash := (path.starts_with "/") ? "" : "/"
+    if not body:
+      // If we're not sending a body, we make it clear
+      // to the other side through the Content-Length
+      // header.
+      headers.set "Content-Length" "0"
     body_writer := connection_.send_headers
       "$method $slash$path $version\r\n"
       headers
