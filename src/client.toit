@@ -221,7 +221,11 @@ class Client:
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
         path = redirection_target[1]
-        return get host path --headers=headers
+        // Create a new GET request and forward the data through that.
+        get_connection := new_connection_ host port --auto_close
+        get_request := get_connection.new_request GET path headers
+        get_request.body = bytes.Reader data
+        return get_request.send
       else:
         return response
 
