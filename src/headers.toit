@@ -36,6 +36,14 @@ class Headers:
     return from_headers.starts_with prefix or (ascii_normalize_ from_headers).starts_with (ascii_normalize_ prefix)
 
   /**
+  Removes the given header.
+
+  Does nothing if the $key doesn't exist.
+  */
+  remove key/string -> none:
+    headers_.remove key
+
+  /**
   Returns a list of string values for the header.
   */
   get key/string -> List?:

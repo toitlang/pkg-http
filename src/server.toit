@@ -97,6 +97,7 @@ class ResponseWriter_ implements ResponseWriter:
   headers_/Headers
   body_writer_/BodyWriter? := null
   detached_/bool := false
+  has_data_/bool := false
 
   constructor .connection_ .request_ .logger_:
     headers_ = Headers
@@ -107,20 +108,22 @@ class ResponseWriter_ implements ResponseWriter:
 
   write_headers status_code/int --message/string?=null:
     if body_writer_: throw "headers already written"
-    write_headers_ status_code message
+    write_headers_ status_code message true
 
   write data:
-    write_headers_ STATUS_OK null
+    if data.size > 0: has_data_ = true
+    write_headers_ STATUS_OK null true
     body_writer_.write data
 
-  write_headers_ status_code/int message/string?:
+  write_headers_ status_code/int message/string? has_body/bool:
     if body_writer_: return
     body_writer_ = connection_.send_headers
-      "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
-      headers
+        "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
+        headers
+        has_body
 
   close:
-    write_headers_ STATUS_OK null
+    write_headers_ STATUS_OK null has_data_
     body_writer_.close
 
   detach -> tcp.Socket:

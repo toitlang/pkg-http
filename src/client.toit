@@ -179,6 +179,19 @@ class Client:
 
     throw "Too many redirects"
 
+  /**
+  Removes all headers that are only relevant for payloads.
+
+  This includes `Content-Length`, or `Transfer_Encoding`.
+  */
+  clear_payload_headers_ headers/Headers:
+    headers.remove "Content-Length"
+    headers.remove "Content-Type"
+    headers.remove "Content-Encoding"
+    headers.remove "Content-Language"
+    headers.remove "Content-Location"
+    headers.remove "Transfer-Encoding"
+
 
   /**
   Posts data on $path for the given server ($host, $port) using the $POST method.
@@ -221,6 +234,7 @@ class Client:
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
         path = redirection_target[1]
+        clear_payload_headers_ headers
         return get host path --headers=headers
       else:
         return response

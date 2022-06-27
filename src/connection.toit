@@ -30,10 +30,10 @@ class Connection:
   close:
     return socket_.close
 
-  send_headers status/string headers/Headers -> BodyWriter:
-    body_writer/BodyWriter := ContentLengthWriter this writer_ 0
+  send_headers status/string headers/Headers has_body/bool -> BodyWriter:
+    body_writer/BodyWriter := ?
 
-    if not headers.matches "Connection" "Upgrade":
+    if has_body and not headers.matches "Connection" "Upgrade":
       content_length := headers.single "Content-Length"
       if content_length:
         length := int.parse content_length
@@ -41,6 +41,8 @@ class Connection:
       else:
         headers.add "Transfer-Encoding" "chunked"
         body_writer = ChunkedWriter writer_
+    else:
+      body_writer = ContentLengthWriter this writer_ 0
 
     socket_.set_no_delay false
 
