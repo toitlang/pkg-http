@@ -44,19 +44,27 @@ class Headers:
     headers_.remove key
 
   /**
-  Returns a list of string values for the header.
+  Returns the stored values for the given $key.
+
+  Returns null if the header is not present.
   */
   get key/string -> List?:
-    return headers_[ascii_normalize_ key]
+    return headers_.get (ascii_normalize_ key)
 
   /**
-  Used to set headers that have only one value.
+  Sets the $key to the given $value.
+
+  If this instance had another (one or more) values for this $key, then
+    the old values are discarded.
   */
   set key/string value/string -> none:
     headers_[ascii_normalize_ key] = [value]
 
   /**
-  Used to set headers that can have multiple values.
+  Adds a new $value to the $key.
+
+  A key can have multiple values and this function simply adds the new
+    value to the list.
   */
   add key/string value/string -> none:
     key = ascii_normalize_ key
@@ -77,12 +85,22 @@ class Headers:
     write_to buffer
     return buffer.to_string
 
+  /**
+  Creates a copy of this instance.
+  */
+  copy -> Headers:
+    result := Headers
+    headers_.do: | key values/List |
+      copied := List values.size: values[it]
+      result.headers_[key] = copied
+    return result
+
   // Camel-case a string.  Only works for ASCII in accordance with the HTTP
   // standard.  If the string is already camel cased (the norm) then no
   // allocation occurs.
   ascii_normalize_ str:
     alpha := false  // Was the previous character an alphabetic (ASCII) letter.
-    ba := null  // Allocate byte array later if needed.
+    ba /ByteArray? := null  // Allocate byte array later if needed.
     str.size.repeat:
       char := str.at --raw it
       problem := alpha ? (is_ascii_upper_case_ char) : (is_ascii_lower_case_ char)
