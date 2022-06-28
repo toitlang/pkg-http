@@ -14,13 +14,14 @@ import .headers
 
 class Connection:
   socket_/tcp.Socket
-  host/string?
+  host_/string?
   reader_ := ?
   writer_/writer.Writer
   auto_close_/bool
 
-  constructor .socket_ --.host/string?=null --auto_close=false:
+  constructor .socket_ --host/string?=null --auto_close=false:
     auto_close_ = auto_close
+    host_ = host
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 
@@ -30,8 +31,12 @@ class Connection:
   close:
     return socket_.close
 
-  send_headers status/string headers/Headers has_body/bool -> BodyWriter:
+  send_headers -> BodyWriter
+      status/string headers/Headers
+      --is_client_request/bool
+      --has_body/bool:
     body_writer/BodyWriter := ?
+    needs_to_write_chunked_header := false
 
     if has_body and not headers.matches "Connection" "Upgrade":
       content_length := headers.single "Content-Length"
@@ -39,15 +44,20 @@ class Connection:
         length := int.parse content_length
         body_writer = ContentLengthWriter this writer_ length
       else:
-        headers.add "Transfer-Encoding" "chunked"
+        needs_to_write_chunked_header = true
         body_writer = ChunkedWriter writer_
     else:
+      // Return a writer that doesn't accept any data.
       body_writer = ContentLengthWriter this writer_ 0
 
     socket_.set_no_delay false
 
     writer_.write status
     headers.write_to writer_
+    if is_client_request and host_:
+      writer_.write "Host: $host_\r\n"
+    if needs_to_write_chunked_header:
+      writer_.write "Transfer-Encoding: chunked\r\n"
     writer_.write "\r\n"
 
     socket_.set_no_delay true

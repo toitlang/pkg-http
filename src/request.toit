@@ -20,13 +20,15 @@ class Request:
 
   body/reader.Reader? := null
 
+  is_client_request_/bool := ?
+
   // Outgoing request to an HTTP server, we are acting like a client.
   constructor.client .connection_ .method .path .headers:
-    if connection_.host:
-      headers.set "Host" connection_.host
+    is_client_request_ = true
 
   // Incoming request from an HTTP client like a browser, we are the server.
   constructor.server .connection_ .body .method .path .version .headers:
+    is_client_request_ = false
 
   content_length -> int?:
     if body is ContentLengthReader:
@@ -38,7 +40,8 @@ class Request:
     body_writer := connection_.send_headers
         "$method $slash$path $version\r\n"
         headers
-        (body != null)
+        --is_client_request=is_client_request_
+        --has_body=(body != null)
     if body:
       while data := body.read:
         body_writer.write data

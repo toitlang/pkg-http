@@ -130,7 +130,7 @@ class Client:
 
   // Extracts the redirection target: host and path.
   extract_redirect_target_ headers/Headers -> List:
-    redirection_target /string := (headers.get "Location")[0]
+    redirection_target /string := headers.single "Location"
     if starts_with_ignore_case_ redirection_target "http://":
       redirection_target = redirection_target[7..]
     else if starts_with_ignore_case_ redirection_target "https://":
@@ -157,6 +157,9 @@ class Client:
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   get host/string --port/int?=null path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.get "Host": throw "INVALID_ARGUMENT"
+
     MAX_REDIRECTS.repeat:
       connection := new_connection_ host port --auto_close
       request := connection.new_request GET path headers
@@ -192,7 +195,6 @@ class Client:
     headers.remove "Content-Location"
     headers.remove "Transfer-Encoding"
 
-
   /**
   Posts data on $path for the given server ($host, $port) using the $POST method.
 
@@ -201,6 +203,9 @@ class Client:
   A port can be provided in two ways:
   - using the $port parameter, or
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
+
+  If $content_type is not null, sends the content type header with that value.
+    If the content type is given, then the $headers must not contain any "Content-Type" entry.
 
   If neither is specified then the $default_port is used.
 
@@ -211,7 +216,21 @@ class Client:
     request with $new_request and to set the $Request.body to a reader that produces
     the data only when needed.
   */
-  post data/ByteArray --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+  post data/ByteArray -> Response
+      --host/string
+      --port/int?=null
+      --path/string
+      --headers/Headers=Headers
+      --content_type/string?=null
+      --follow_redirects/bool=true:
+    if content_type and headers.get "Content-Type": throw "INVALID_ARGUMENT"
+    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.get "Host": throw "INVALID_ARGUMENT"
+
+    if content_type:
+      headers = headers.copy
+      headers.set "Content-Type" content_type
+
     MAX_REDIRECTS.repeat:
       connection := new_connection_ host port --auto_close
       request := connection.new_request POST path headers
@@ -234,6 +253,7 @@ class Client:
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
         path = redirection_target[1]
+        headers = headers.copy
         clear_payload_headers_ headers
         return get host path --headers=headers
       else:
@@ -259,10 +279,15 @@ class Client:
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   post_json object/any --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.get "Content-Type": throw "INVALID_ARGUMENT"
+    if headers.get "Host": throw "INVALID_ARGUMENT"
+
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
-    headers.add "Content-type" "application/json"
-    return post encoded --host=host --port=port --path=path --headers=headers --follow_redirects=follow_redirects
+    return post encoded --content_type="application/json" \
+        --host=host --port=port --path=path --headers=headers \
+        --follow_redirects=follow_redirects
 
   /**
   Posts the $map on $path for the given server ($host, $port) using the $POST method.
@@ -288,6 +313,10 @@ class Client:
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   post_form map/Map --host/string --port/int?=null --path/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
+    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.get "Content-Type": throw "INVALID_ARGUMENT"
+    if headers.get "Host": throw "INVALID_ARGUMENT"
+
     buffer := bytes.Buffer
     first := true
     map.do: | key value |
@@ -305,8 +334,9 @@ class Client:
       buffer.write
         url_encode_ value
     encoded := buffer.bytes
-    headers.add "Content-type" "application/x-www-form-urlencoded"
-    return post encoded --host=host --port=port --path=path --headers=headers --follow_redirects=follow_redirects
+    return post encoded --content_type="application/x-www-form-urlencoded" \
+        --host=host --port=port --path=path --headers=headers \
+        --follow_redirects=follow_redirects
 
   // TODO: This is a copy of the code in the standard lib/encoding/url.toit.
   // Remove when an SDK release has made this available to the HTTP package.
@@ -362,7 +392,10 @@ class Client:
         --server_name=server_name_ or host
         --certificate=certificate_
         --root_certificates=root_certificates_
-    return Connection socket --host=host --auto_close=auto_close
+    host_header_string := host
+    if port != default_port:
+      host_header_string += ":$port"
+    return Connection socket --host=host_header_string --auto_close=auto_close
 
   /**
   The default port used based on the type of connection.

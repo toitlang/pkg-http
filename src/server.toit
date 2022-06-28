@@ -120,7 +120,8 @@ class ResponseWriter_ implements ResponseWriter:
     body_writer_ = connection_.send_headers
         "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
         headers
-        has_body
+        --is_client_request=false
+        --has_body=has_body
 
   close:
     write_headers_ STATUS_OK null has_data_
