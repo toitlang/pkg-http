@@ -100,18 +100,18 @@ class Headers:
   // allocation occurs.
   ascii_normalize_ str:
     alpha := false  // Was the previous character an alphabetic (ASCII) letter.
-    ba /ByteArray? := null  // Allocate byte array later if needed.
+    bytes/ByteArray? := null  // Allocate byte array later if needed.
     str.size.repeat:
       char := str.at --raw it
       problem := alpha ? (is_ascii_upper_case_ char) : (is_ascii_lower_case_ char)
-      if problem and not ba:
-        ba = ByteArray str.size
-        str.write_to_byte_array ba 0 it 0
-      if ba:
-        ba[it] = problem ? (char ^ 32) : char
+      if problem and not bytes:
+        bytes = ByteArray str.size
+        str.write_to_byte_array bytes 0 it 0
+      if bytes:
+        bytes[it] = problem ? (char ^ 32) : char
       alpha = is_ascii_alpha_ char
-    if not ba: return str
-    return ba.to_string
+    if not bytes: return str
+    return bytes.to_string
 
   is_ascii_upper_case_ char:
     return 'A' <= char <= 'Z'

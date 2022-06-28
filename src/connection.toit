@@ -54,10 +54,10 @@ class Connection:
 
     writer_.write status
     headers.write_to writer_
-    if needs_to_write_chunked_header:
-      writer_.write "Transfer-Encoding: chunked\r\n"
     if is_client_request and host_:
       writer_.write "Host: $host_\r\n"
+    if needs_to_write_chunked_header:
+      writer_.write "Transfer-Encoding: chunked\r\n"
     writer_.write "\r\n"
 
     socket_.set_no_delay true
