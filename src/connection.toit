@@ -101,7 +101,7 @@ class Connection:
       // pass-through reader.
       return reader_
 
-    content_length := headers.single("Content-Length")
+    content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
       return ContentLengthReader this reader_ length
