@@ -148,7 +148,7 @@ class Connection:
   response_done_:
     if auto_close_: close
 
-class ContentLengthReader implements reader.Reader:
+class ContentLengthReader implements reader.SizedReader:
   connection_/Connection
   reader_/reader.BufferedReader
   remaining_length_/int := ?
@@ -156,6 +156,9 @@ class ContentLengthReader implements reader.Reader:
 
   constructor .connection_ .reader_ .content_length:
     remaining_length_ = content_length
+
+  size -> int:
+    return content_length
 
   read -> ByteArray?:
     if remaining_length_ <= 0:
