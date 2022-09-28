@@ -8,6 +8,7 @@ import .request
 import .response
 import .headers
 import .method
+import .web_socket
 
 export *
 

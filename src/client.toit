@@ -2,19 +2,22 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import bytes
+import crypto.sha1 show sha1
+import encoding.base64
+import encoding.json
 import net
 import net.tcp
 import reader
 import tls
-import bytes
-import encoding.json
 
+import .connection
+import .headers
+import .method
 import .request
 import .response
-import .connection
-import .method
-import .headers
 import .status_codes
+import .web_socket
 
 /**
 An HTTP v1.1 client.
@@ -118,7 +121,7 @@ class Client:
     request := connection.new_request method path headers
     return request
 
-  starts_with_ignore_case_ str/string needle/string -> bool:
+  static starts_with_ignore_case_ str/string needle/string -> bool:
     if str.size < needle.size: return false
     for i := 0; i < needle.size; i++:
       a := str[i]
@@ -129,7 +132,7 @@ class Client:
     return true
 
   // Extracts the redirection target: host and path.
-  extract_redirect_target_ headers/Headers -> List:
+  static extract_redirect_target_ headers/Headers -> List:
     redirection_target /string := headers.single "Location"
     if starts_with_ignore_case_ redirection_target "http://":
       redirection_target = redirection_target[7..]
@@ -179,6 +182,53 @@ class Client:
         continue.repeat
       else:
         return response
+
+    throw "Too many redirects"
+
+  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true -> WebSocket:
+    return web_socket host --port=port path --headers=headers --follow_redirects=follow_redirects: | response |
+      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
+
+  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true [on_error] -> WebSocket:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close=false
+      nonce := base64.encode (ByteArray 16: random 0x100)
+      headers.add "Host" connection.host_
+      headers.add "Connection" "upgrade"
+      headers.add "Upgrade" "websocket"
+      headers.add "Sec-WebSocket-Key" nonce
+      headers.add "Sec-WebSocket-Version" "13"
+      request := connection.new_request GET path headers
+      response := request.send
+      if follow_redirects and
+          (response.status_code == STATUS_MOVED_PERMANENTLY
+            or response.status_code == STATUS_FOUND
+            or response.status_code == STATUS_SEE_OTHER
+            or response.status_code == STATUS_TEMPORARY_REDIRECT
+            or response.status_code == STATUS_PERMANENT_REDIRECT):
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        continue.repeat
+      else:
+        if response.status_code != STATUS_SWITCHING_PROTOCOLS:
+          return on_error.call response
+        expected_response := base64.encode
+            sha1 nonce + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        upgrade_header := response.headers.single "Upgrade"
+        connection_header := response.headers.single "Connection"
+        if not upgrade_header
+            or not connection_header
+            or (Headers.ascii_normalize_ upgrade_header) != "Websocket"
+            or (Headers.ascii_normalize_ connection_header) != "Upgrade"
+            or (response.headers.single "Sec-WebSocket-Accept") != expected_response:
+          throw "MISSING_HEADER_IN_RESPONSE"
+        if response.headers.single "Sec-WebSocket-Extensions"
+            or response.headers.single "Sec-WebSocket-Protocol":
+          throw "UNKNOWN_HEADER_IN_RESPONSE"
+        return WebSocket connection.socket_
 
     throw "Too many redirects"
 
