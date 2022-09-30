@@ -169,11 +169,8 @@ class Client:
       response := request.send
 
       if follow_redirects and
-          (response.status_code == STATUS_MOVED_PERMANENTLY
-            or response.status_code == STATUS_FOUND
-            or response.status_code == STATUS_SEE_OTHER
-            or response.status_code == STATUS_TEMPORARY_REDIRECT
-            or response.status_code == STATUS_PERMANENT_REDIRECT):
+          (is_regular_redirect_ response.status_code
+            or response.status_code == STATUS_SEE_OTHER):
         connection.close
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
@@ -201,11 +198,8 @@ class Client:
       request := connection.new_request GET path headers
       response := request.send
       if follow_redirects and
-          (response.status_code == STATUS_MOVED_PERMANENTLY
-            or response.status_code == STATUS_FOUND
-            or response.status_code == STATUS_SEE_OTHER
-            or response.status_code == STATUS_TEMPORARY_REDIRECT
-            or response.status_code == STATUS_PERMANENT_REDIRECT):
+          (is_regular_redirect_ response.status_code
+            or response.status_code == STATUS_SEE_OTHER):
         connection.close
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
@@ -287,11 +281,7 @@ class Client:
       request.body = bytes.Reader data
       response := request.send
 
-      if follow_redirects and
-          (response.status_code == STATUS_MOVED_PERMANENTLY
-            or response.status_code == STATUS_FOUND
-            or response.status_code == STATUS_TEMPORARY_REDIRECT
-            or response.status_code == STATUS_PERMANENT_REDIRECT):
+      if follow_redirects and is_regular_redirect_ response.status_code:
         connection.close
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]

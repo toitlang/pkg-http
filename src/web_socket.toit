@@ -263,7 +263,6 @@ class FragmentReader_:
   size_ /int ::= ?
   received_ := 0
   masking_bytes /ByteArray? := null
-  continuation_reader_ /WebSocketReader? := null
 
   constructor .owner_ .size_ .control_bits_ --masking_bytes/ByteArray?=null:
 

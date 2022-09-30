@@ -83,3 +83,10 @@ status_messages_/Map ::= {
 status_message status_code/int -> string:
   return status_messages_.get status_code
     --if_absent=: ""
+
+
+is_regular_redirect_ status_code/int -> bool:
+  return status_code == STATUS_MOVED_PERMANENTLY
+      or status_code == STATUS_FOUND
+      or status_code == STATUS_TEMPORARY_REDIRECT
+      or status_code == STATUS_PERMANENT_REDIRECT
