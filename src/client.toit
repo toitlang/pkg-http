@@ -182,10 +182,23 @@ class Client:
 
     throw "Too many redirects"
 
+  /**
+  Upgrades the HTTP connection to a $WebSocket connection.
+  On error, throws an exception.
+  After this call, this client can no longer be used for regular HTTP requests.
+  */
   web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true -> WebSocket:
     return web_socket host --port=port path --headers=headers --follow_redirects=follow_redirects: | response |
+      if response == null: throw "Too many redirects"
       throw "WebSocket upgrade failed with $response.status_code $response.status_message"
 
+  /**
+  Upgrades the HTTP connection to a $WebSocket connection.
+  On an error, the block is called with the $Response as its argument.
+  In the case that there are too many redirects, the block is called with null
+    as its argument.
+  After this call, this client can no longer be used for regular HTTP requests.
+  */
   web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true [on_error] -> WebSocket:
     MAX_REDIRECTS.repeat:
       connection := new_connection_ host port --auto_close=false
@@ -224,7 +237,7 @@ class Client:
           throw "UNKNOWN_HEADER_IN_RESPONSE"
         return WebSocket connection.socket_
 
-    throw "Too many redirects"
+    return on_error.call null
 
   /**
   Removes all headers that are only relevant for payloads.

@@ -46,26 +46,61 @@ class WebSocket:
     pending_ = byte_array
 
   /**
+  Reads a whole message, returning it as a string or a ByteArray.
+  Returns null if the connection is closed.
+  Messages transmitted as text will be returned as strings.
+  Messages transmitted as binary will be returned as byte arrays.
+  For connections with potentially large messages, consider using
+    $start_receiving instead to stream the data.
+  With $force_byte_array it will return a byte array even if the
+    peer marks the message as text.  This can be useful to avoid
+    exceptions if the peer is marking invalid UTF-8 messages as
+    text.
+  */
+  receive --force_byte_array=false -> any?:
+    reader := start_receiving
+    if reader == null: return null
+    list := []
+    while data := reader.read:
+      list.add data
+    text := reader.is_text and not force_byte_array
+    if list.size == 0: return text ? "" : #[]
+    if list.size == 1: return text ? list[0].to_string : list[0]
+    size := list.reduce --initial=0: | sz byte_array | sz + byte_array.size
+    result := ByteArray size
+    position := 0
+    list.do:
+      result.replace it position
+      position += it.size
+    list = []  // Free up some memory before the big to_string.
+    return text ? result.to_string : result
+
+  /**
   Returns a reader for the next message sent to us on the WebSocket.
   Returns null if the connection is closed.
   Should not be called until the previous reader has been fully read.
+  See also $receive if you know messages are small enough to fit in memory.
   */
-  receive -> WebSocketReader?:
-    if current_reader_ != null: throw "PREVIOUS_READER_NOT_FINISHED"
-    fragment_reader := receive_
+  start_receiving -> WebSocketReader?:
+    if current_reader_ != null:
+      close
+      throw "PREVIOUS_READER_NOT_FINISHED"
+    fragment_reader := next_fragment_
     if fragment_reader == null: return null
     if fragment_reader.is_ping or fragment_reader.is_pong:
+      close
       throw "UNIMPLEMENTED_PING"
     if fragment_reader.is_close:
       return null
     if fragment_reader.is_continuation:
+      close
       throw "PROTOCOL_ERROR"
     size := fragment_reader.size_
     current_reader_ = WebSocketReader.private_ this fragment_reader fragment_reader.is_text fragment_reader.size
     return current_reader_
 
   // Reads the header of the next fragment.
-  receive_ -> FragmentReader_?:
+  next_fragment_ -> FragmentReader_?:
     // Named block:
     get_more := :
       next := socket_.read
@@ -97,7 +132,9 @@ class WebSocket:
         ? pending_.copy (header_size_needed - 4) header_size_needed
         : null
     result := FragmentReader_ this len pending_[0] --masking_bytes=masking_bytes
-    if not result.is_ok_: throw "PROTOCOL_ERROR"
+    if not result.is_ok_:
+      close
+      throw "PROTOCOL_ERROR"
     pending_ = pending_[header_size_needed..]
     return result
 
@@ -106,7 +143,7 @@ class WebSocket:
   Strings are sent as text, whereas byte arrays are sent as binary.
   */
   send data -> none:
-    writer := send --size=data.size
+    writer := start_sending --size=data.size
     writer.write data
     writer.close
 
@@ -123,7 +160,7 @@ class WebSocket:
   Returns a writer, which must be completed (all data sent, and closed) before
     this method can be called again.
   */
-  send --size/int?=null -> WebSocketWriter:
+  start_sending --size/int?=null -> WebSocketWriter:
     if current_writer_: throw "PREVIOUS_WRITER_NOT_CLOSED"
     current_writer_ = WebSocketWriter.private_ this size
     return current_writer_
@@ -147,6 +184,7 @@ class WebSocket:
   close:
     socket_.close
     current_writer_ = null
+    current_reader_ = null
 
 /**
 A writer for writing a single message on a WebSocket connection.
@@ -245,7 +283,7 @@ class WebSocketReader implements reader.Reader:
           owner_ = null
           return null
       if owner_ == null: return null  // Closed.
-      fragment_reader_ = owner_.receive_
+      fragment_reader_ = owner_.next_fragment_
       if fragment_reader_.is_ping or fragment_reader_.is_pong:
         throw "UNIMPLEMENTED_PING"
       else if not fragment_reader_.is_continuation:
