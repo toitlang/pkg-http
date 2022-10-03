@@ -75,6 +75,16 @@ The method ($GET, $POST, ...) must be the same when accessing the redirection ta
 */
 STATUS_PERMANENT_REDIRECT /int ::= 308
 
+/**
+Status code for a malformed request.
+*/
+STATUS_BAD_REQUEST /int ::= 400
+
+/**
+Status code for an unknown request path.
+*/
+STATUS_NOT_FOUND /int ::= 404
+
 status_messages_/Map ::= {
   STATUS_OK: "OK",
   STATUS_SWITCHING_PROTOCOLS: "Switching Protocols",

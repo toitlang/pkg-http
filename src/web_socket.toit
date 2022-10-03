@@ -3,9 +3,17 @@
 // found in the LICENSE file.
 
 import binary show BIG_ENDIAN
+import crypto.sha1 show sha1
+import encoding.base64
 import net.tcp
 import reader
 import writer
+
+import .headers
+import .request
+import .response
+import .server
+import .status_codes
 
 OPCODE_CONTINUATION_ ::= 0
 OPCODE_TEXT_         ::= 1
@@ -185,6 +193,57 @@ class WebSocket:
     socket_.close
     current_writer_ = null
     current_reader_ = null
+
+  static add_client_upgrade_headers_ headers/Headers -> string:
+    nonce := base64.encode (ByteArray 16: random 0x100)
+    headers.add "Connection" "upgrade"
+    headers.add "Upgrade" "websocket"
+    headers.add "Sec-WebSocket-Key" nonce
+    headers.add "Sec-WebSocket-Version" "13"
+    return nonce
+
+  static check_client_upgrade_response_ response/Response nonce/string [on_error] -> none:
+    if response.status_code != STATUS_SWITCHING_PROTOCOLS:
+      on_error.call response
+      throw response.stringify
+    upgrade_header := response.headers.single "Upgrade"
+    connection_header := response.headers.single "Connection"
+    if not upgrade_header
+        or not connection_header
+        or (Headers.ascii_normalize_ upgrade_header) != "Websocket"
+        or (Headers.ascii_normalize_ connection_header) != "Upgrade"
+        or (response.headers.single "Sec-WebSocket-Accept") != (WebSocket.response_ nonce):
+      throw "MISSING_HEADER_IN_RESPONSE"
+    if response.headers.single "Sec-WebSocket-Extensions"
+        or response.headers.single "Sec-WebSocket-Protocol":
+      throw "UNKNOWN_HEADER_IN_RESPONSE"
+
+  /**
+  Checks whether the request is a WebSocket upgrade request.
+  If it is a valid upgrade request, adds the required headers to the response_writer
+  Otherwise responds with an error code and returns null.
+  */
+  static check_server_upgrade_request_ request/Request response_writer/ResponseWriter_ -> string?:
+    connection_header := request.headers.single "Connection"
+    upgrade_header := request.headers.single "Upgrade"
+    version_header := request.headers.single "Sec-WebSocket-Version"
+    nonce := request.headers.single "Sec-WebSocket-Key"
+    message := null
+    if nonce == null:                message="No nonce"
+    else if nonce.size != 44:        message="Bad nonce size"
+    else if connection_header != "upgrade": message="No Connection: upgrade"
+    else if upgrade_header != "websocket":  message="No Upgrade: websocket"
+    else if version_header != "13":         message="Unrecognized Websocket version"
+    else:
+      response_writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
+      return nonce
+    response_writer.write_headers STATUS_BAD_REQUEST --message=message
+    return null
+
+  static response_ nonce/string -> string:
+    expected_response := base64.encode
+        sha1 nonce + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    return expected_response
 
 /**
 A writer for writing a single message on a WebSocket connection.

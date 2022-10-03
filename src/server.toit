@@ -2,20 +2,21 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import bytes
+import log
+import monitor
 import net
 import net.tcp
-import bytes
-import monitor
-import log
-import writer
 import tls
+import writer
 
-import .status_codes
+import .chunked
+import .connection
 import .headers
 import .request
 import .response
-import .connection
-import .chunked
+import .status_codes
+import .web_socket
 
 class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
@@ -71,6 +72,11 @@ class Server:
             close_logger.debug "client disconnected"
         finally:
           if not detached: socket.close
+
+  web_socket request/Request response_writer/ResponseWriter_ -> WebSocket?:
+    nonce := WebSocket.check_server_upgrade_request_ request response_writer
+    if nonce == null: return null
+    return WebSocket response_writer.connection_.socket_
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:

@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 import bytes
-import crypto.sha1 show sha1
-import encoding.base64
 import encoding.json
 import net
 import net.tcp
@@ -202,12 +200,8 @@ class Client:
   web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true [on_error] -> WebSocket:
     MAX_REDIRECTS.repeat:
       connection := new_connection_ host port --auto_close=false
-      nonce := base64.encode (ByteArray 16: random 0x100)
+      nonce := WebSocket.add_client_upgrade_headers_ headers
       headers.add "Host" connection.host_
-      headers.add "Connection" "upgrade"
-      headers.add "Upgrade" "websocket"
-      headers.add "Sec-WebSocket-Key" nonce
-      headers.add "Sec-WebSocket-Version" "13"
       request := connection.new_request GET path headers
       response := request.send
       if follow_redirects and
@@ -220,24 +214,11 @@ class Client:
         port = null
         continue.repeat
       else:
-        if response.status_code != STATUS_SWITCHING_PROTOCOLS:
-          return on_error.call response
-        expected_response := base64.encode
-            sha1 nonce + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        upgrade_header := response.headers.single "Upgrade"
-        connection_header := response.headers.single "Connection"
-        if not upgrade_header
-            or not connection_header
-            or (Headers.ascii_normalize_ upgrade_header) != "Websocket"
-            or (Headers.ascii_normalize_ connection_header) != "Upgrade"
-            or (response.headers.single "Sec-WebSocket-Accept") != expected_response:
-          throw "MISSING_HEADER_IN_RESPONSE"
-        if response.headers.single "Sec-WebSocket-Extensions"
-            or response.headers.single "Sec-WebSocket-Protocol":
-          throw "UNKNOWN_HEADER_IN_RESPONSE"
+        WebSocket.check_client_upgrade_response_ response nonce on_error
         return WebSocket connection.socket_
 
-    return on_error.call null
+    on_error.call null
+    throw "TOO_MANY_REDIRECTS"
 
   /**
   Removes all headers that are only relevant for payloads.

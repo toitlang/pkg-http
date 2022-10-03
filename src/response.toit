@@ -21,6 +21,8 @@ class Response:
 
   constructor .connection_ .version .status_code .status_message .headers .body:
 
+  stringify: return "$status_code: $status_message"
+
   // Return a reader & writer object, used to send raw data on the connection.
   detach -> tcp.Socket:
     return DetachedSocket_ connection_.socket_ body
