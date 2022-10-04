@@ -177,10 +177,10 @@ class WebSocket:
     if current_writer_ != writer: throw "WRONG_WRITER_CALLED_CLOSE"
     current_writer_ = null
 
-  write_ data -> none:
+  write_ data from=0 to=data.size -> none:
     written := 0
-    while written < data.size:
-      written += socket_.write data[written..]
+    while from < to:
+      from += socket_.write data from to
 
   reader_close_ -> none:
     current_reader_ = null
@@ -221,6 +221,7 @@ class WebSocket:
   /**
   Checks whether the request is a WebSocket upgrade request.
   If it is a valid upgrade request, adds the required headers to the response_writer
+    and sends a response confirming the upgrade.
   Otherwise responds with an error code and returns null.
   */
   static check_server_upgrade_request_ request/Request response_writer/ResponseWriter_ -> string?:
@@ -258,16 +259,18 @@ class WebSocketWriter:
 
   constructor.private_ .owner_ .size_:
 
-  write data -> int:
+  write data from=0 to=data.size -> int:
     if owner_ == null: throw "ALREADY_CLOSED"
-    from := 0
+    total_size := to - from
     while true:
-      while from < data.size and remaining_in_fragment_ != 0:
-        size := min data.size - from remaining_in_fragment_
-        owner_.write_ data[from..from + size]
+      while from < to and remaining_in_fragment_ != 0:
+        size := min to - from remaining_in_fragment_
+        // We don't use slices because data might be a string with UTF-8
+        // sequences in it.
+        owner_.write_ data from (from + size)
         from += size
-      remaining_in_fragment_ -= data.size
-      if from == data.size: return data.size
+        remaining_in_fragment_ -= size
+      if from == to: return total_size
 
       opcode := data is string ? OPCODE_TEXT_ : OPCODE_BINARY_
       if fragment_sent_:

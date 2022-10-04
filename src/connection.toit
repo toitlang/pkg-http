@@ -81,6 +81,18 @@ class Connection:
 
     return Request.server this reader method path version headers
 
+  // Gets the data that has been buffered, but not yet parsed by this connection.
+  // Never calls read on the underlying socket.
+  // May return a zero length byte array if no data has been buffered.
+  read_buffered_ -> ByteArray?:
+    result := #[]
+    buffered := reader_.buffered
+    while result.size < buffered:
+      next := reader_.read --max_size=(buffered - result.size)
+      if next == null: return result
+      result += next
+    return result
+
   read_response -> Response:
     version := reader_.read_string (reader_.index_of_or_throw ' ')
     reader_.skip 1
@@ -191,6 +203,7 @@ class ContentLengthWriter implements BodyWriter:
 class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket
   reader_/reader.Reader?
+  buffered_/ByteArray? := null
 
   // TODO(kasper): For now, it is necessary to keep track
   // of whether or not the TCP_NODELAY option has been enabled.
@@ -198,7 +211,7 @@ class DetachedSocket_ implements tcp.Socket:
   // underlying tcp.Socket support the $no_delay getter.
   no_delay_/bool? := null
 
-  constructor .socket_ .reader_:
+  constructor .socket_ .reader_ buffered_:
 
   // TODO(kasper): Remove this. Here for backwards compatibility.
   set_no_delay enabled/bool: socket_.set_no_delay enabled
@@ -213,7 +226,13 @@ class DetachedSocket_ implements tcp.Socket:
     set_no_delay value
     no_delay_ = value
 
-  read -> ByteArray?: return reader_.read
+  read -> ByteArray?:
+    if result := buffered_:
+      buffered_ = null
+      if result.size > 0:
+        return result
+    return reader_.read
+
   write data from=0 to=data.size: return socket_.write data from to
   close_write: return socket_.close_write
   close: return socket_.close

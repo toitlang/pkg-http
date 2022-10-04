@@ -78,7 +78,7 @@ class Server:
     nonce := WebSocket.check_server_upgrade_request_ request rw
     if nonce == null: return null
     response_writer.write_headers STATUS_SWITCHING_PROTOCOLS --message="OK"
-    return WebSocket rw.connection_.socket_
+    return WebSocket rw.detach
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:
@@ -91,7 +91,7 @@ class Server:
       writer ::= ResponseWriter_ connection request request_logger
       catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
         handler.call request writer
-      // Drain unread content to get allow the connection to be reused.
+      // Drain unread content to allow the connection to be reused.
       if writer.detached_: return true
       request.drain
       writer.close
@@ -137,7 +137,7 @@ class ResponseWriter_ implements ResponseWriter:
 
   detach -> tcp.Socket:
     detached_ = true
-    return DetachedSocket_ connection_.socket_ request_.body
+    return DetachedSocket_ connection_.socket_ request_.body connection_.read_buffered_
 
 interface ResponseWriter:
   headers -> Headers
