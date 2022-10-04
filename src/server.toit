@@ -73,10 +73,12 @@ class Server:
         finally:
           if not detached: socket.close
 
-  web_socket request/Request response_writer/ResponseWriter_ -> WebSocket?:
-    nonce := WebSocket.check_server_upgrade_request_ request response_writer
+  web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
+    rw := response_writer as ResponseWriter_
+    nonce := WebSocket.check_server_upgrade_request_ request rw
     if nonce == null: return null
-    return WebSocket response_writer.connection_.socket_
+    response_writer.write_headers STATUS_SWITCHING_PROTOCOLS --message="OK"
+    return WebSocket rw.connection_.socket_
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:

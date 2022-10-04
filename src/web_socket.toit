@@ -78,7 +78,7 @@ class WebSocket:
     result := ByteArray size
     position := 0
     list.do:
-      result.replace it position
+      result.replace position it
       position += it.size
     list = []  // Free up some memory before the big to_string.
     return text ? result.to_string : result
@@ -230,12 +230,14 @@ class WebSocket:
     nonce := request.headers.single "Sec-WebSocket-Key"
     message := null
     if nonce == null:                message="No nonce"
-    else if nonce.size != 44:        message="Bad nonce size"
+    else if nonce.size != 24:        message="Bad nonce size"
     else if connection_header != "upgrade": message="No Connection: upgrade"
     else if upgrade_header != "websocket":  message="No Upgrade: websocket"
     else if version_header != "13":         message="Unrecognized Websocket version"
     else:
       response_writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
+      response_writer.headers.add "Connection" "upgrade"
+      response_writer.headers.add "Upgrade" "websocket"
       return nonce
     response_writer.write_headers STATUS_BAD_REQUEST --message=message
     return null
