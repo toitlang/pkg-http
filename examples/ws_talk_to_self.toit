@@ -33,7 +33,7 @@ client_sending web_socket -> none:
   writer.write "to come to the aid of the party."
   writer.close
   web_socket.send #[3, 4, 5]
-  
+
 client_reading web_socket -> none:
   while reader := web_socket.start_receiving:
     size := 0

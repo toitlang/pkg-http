@@ -52,7 +52,7 @@ client_sending web_socket -> none:
       while pos < packet.size:
         pos += writer.write packet pos
       writer.close
-  
+
 client_reading web_socket -> none:
   TEST_PACKETS.do: | packet |
     // Receive with a reader.
