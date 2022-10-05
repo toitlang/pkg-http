@@ -12,6 +12,7 @@ import writer
 import .headers
 import .request
 import .response
+import .client show Client
 import .server
 import .status_codes
 

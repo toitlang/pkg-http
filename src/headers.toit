@@ -106,7 +106,7 @@ class Headers:
       problem := alpha ? (is_ascii_upper_case_ char) : (is_ascii_lower_case_ char)
       if problem and not bytes:
         bytes = ByteArray str.size
-        str.write_to_byte_array bytes 0 it 0
+        str[..it].write_to_byte_array bytes
       if bytes:
         bytes[it] = problem ? (char ^ 32) : char
       alpha = is_ascii_alpha_ char
