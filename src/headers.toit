@@ -98,7 +98,7 @@ class Headers:
   // Camel-case a string.  Only works for ASCII in accordance with the HTTP
   // standard.  If the string is already camel cased (the norm) then no
   // allocation occurs.
-  ascii_normalize_ str:
+  static ascii_normalize_ str/string -> string:
     alpha := false  // Was the previous character an alphabetic (ASCII) letter.
     bytes/ByteArray? := null  // Allocate byte array later if needed.
     str.size.repeat:
@@ -113,11 +113,11 @@ class Headers:
     if not bytes: return str
     return bytes.to_string
 
-  is_ascii_upper_case_ char:
+  static is_ascii_upper_case_ char/int -> bool:
     return 'A' <= char <= 'Z'
 
-  is_ascii_lower_case_ char:
+  static is_ascii_lower_case_ char/int -> bool:
     return 'a' <= char <= 'z'
 
-  is_ascii_alpha_ char:
+  static is_ascii_alpha_ char/int -> bool:
     return is_ascii_lower_case_ char or is_ascii_upper_case_ char

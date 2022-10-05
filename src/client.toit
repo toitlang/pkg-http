@@ -2,19 +2,20 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import bytes
+import encoding.json
 import net
 import net.tcp
 import reader
 import tls
-import bytes
-import encoding.json
 
+import .connection
+import .headers
+import .method
 import .request
 import .response
-import .connection
-import .method
-import .headers
 import .status_codes
+import .web_socket
 
 /**
 An HTTP v1.1 client.
@@ -118,7 +119,7 @@ class Client:
     request := connection.new_request method path headers
     return request
 
-  starts_with_ignore_case_ str/string needle/string -> bool:
+  static starts_with_ignore_case_ str/string needle/string -> bool:
     if str.size < needle.size: return false
     for i := 0; i < needle.size; i++:
       a := str[i]
@@ -129,7 +130,7 @@ class Client:
     return true
 
   // Extracts the redirection target: host and path.
-  extract_redirect_target_ headers/Headers -> List:
+  static extract_redirect_target_ headers/Headers -> List:
     redirection_target /string := headers.single "Location"
     if starts_with_ignore_case_ redirection_target "http://":
       redirection_target = redirection_target[7..]
@@ -166,11 +167,8 @@ class Client:
       response := request.send
 
       if follow_redirects and
-          (response.status_code == STATUS_MOVED_PERMANENTLY
-            or response.status_code == STATUS_FOUND
-            or response.status_code == STATUS_SEE_OTHER
-            or response.status_code == STATUS_TEMPORARY_REDIRECT
-            or response.status_code == STATUS_PERMANENT_REDIRECT):
+          (is_regular_redirect_ response.status_code
+            or response.status_code == STATUS_SEE_OTHER):
         connection.close
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]
@@ -181,6 +179,46 @@ class Client:
         return response
 
     throw "Too many redirects"
+
+  /**
+  Upgrades the HTTP connection to a $WebSocket connection.
+  On error, throws an exception.
+  After this call, this client can no longer be used for regular HTTP requests.
+  */
+  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true -> WebSocket:
+    return web_socket host --port=port path --headers=headers --follow_redirects=follow_redirects: | response |
+      if response == null: throw "Too many redirects"
+      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
+
+  /**
+  Upgrades the HTTP connection to a $WebSocket connection.
+  On an error, the block is called with the $Response as its argument.
+  In the case that there are too many redirects, the block is called with null
+    as its argument.
+  After this call, this client can no longer be used for regular HTTP requests.
+  */
+  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true [on_error] -> WebSocket:
+    MAX_REDIRECTS.repeat:
+      connection := new_connection_ host port --auto_close=false
+      nonce := WebSocket.add_client_upgrade_headers_ headers
+      headers.add "Host" connection.host_
+      request := connection.new_request GET path headers
+      response := request.send
+      if follow_redirects and
+          (is_regular_redirect_ response.status_code
+            or response.status_code == STATUS_SEE_OTHER):
+        connection.close
+        redirection_target := extract_redirect_target_ response.headers
+        host = redirection_target[0]
+        path = redirection_target[1]
+        port = null
+        continue.repeat
+      else:
+        WebSocket.check_client_upgrade_response_ response nonce on_error
+        return WebSocket connection.socket_
+
+    on_error.call null
+    throw "TOO_MANY_REDIRECTS"
 
   /**
   Removes all headers that are only relevant for payloads.
@@ -237,11 +275,7 @@ class Client:
       request.body = bytes.Reader data
       response := request.send
 
-      if follow_redirects and
-          (response.status_code == STATUS_MOVED_PERMANENTLY
-            or response.status_code == STATUS_FOUND
-            or response.status_code == STATUS_TEMPORARY_REDIRECT
-            or response.status_code == STATUS_PERMANENT_REDIRECT):
+      if follow_redirects and is_regular_redirect_ response.status_code:
         connection.close
         redirection_target := extract_redirect_target_ response.headers
         host = redirection_target[0]

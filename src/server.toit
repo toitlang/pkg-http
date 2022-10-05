@@ -2,20 +2,21 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import bytes
+import log
+import monitor
 import net
 import net.tcp
-import bytes
-import monitor
-import log
-import writer
 import tls
+import writer
 
-import .status_codes
+import .chunked
+import .connection
 import .headers
 import .request
 import .response
-import .connection
-import .chunked
+import .status_codes
+import .web_socket
 
 class Server:
   static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
@@ -72,6 +73,13 @@ class Server:
         finally:
           if not detached: socket.close
 
+  web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
+    rw := response_writer as ResponseWriter_
+    nonce := WebSocket.check_server_upgrade_request_ request rw
+    if nonce == null: return null
+    response_writer.write_headers STATUS_SWITCHING_PROTOCOLS --message="OK"
+    return WebSocket rw.detach
+
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:
       request := null
@@ -83,7 +91,7 @@ class Server:
       writer ::= ResponseWriter_ connection request request_logger
       catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
         handler.call request writer
-      // Drain unread content to get allow the connection to be reused.
+      // Drain unread content to allow the connection to be reused.
       if writer.detached_: return true
       request.drain
       writer.close
@@ -129,7 +137,7 @@ class ResponseWriter_ implements ResponseWriter:
 
   detach -> tcp.Socket:
     detached_ = true
-    return DetachedSocket_ connection_.socket_ request_.body
+    return DetachedSocket_ connection_.socket_ request_.body connection_.read_buffered_
 
 interface ResponseWriter:
   headers -> Headers
