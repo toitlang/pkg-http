@@ -8,5 +8,6 @@ set(FAILING_TESTS
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND FAILING_TESTS
     ${TEST_PREFIX}/tests/redirect_test.toit
+    ${TEST_PREFIX}/tests/websocket_standalone_test.toit
   )
 endif()

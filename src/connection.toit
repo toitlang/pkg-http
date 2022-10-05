@@ -85,13 +85,7 @@ class Connection:
   // Never calls read on the underlying socket.
   // May return a zero length byte array if no data has been buffered.
   read_buffered_ -> ByteArray?:
-    result := #[]
-    buffered := reader_.buffered
-    while result.size < buffered:
-      next := reader_.read --max_size=(buffered - result.size)
-      if next == null: return result
-      result += next
-    return result
+    return reader_.read_bytes reader_.buffered
 
   read_response -> Response:
     version := reader_.read_string (reader_.index_of_or_throw ' ')

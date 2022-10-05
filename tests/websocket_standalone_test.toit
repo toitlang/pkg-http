@@ -8,7 +8,7 @@ import net
 
 // Sets up a web server that can switch to websocket mode on the "/" path.
 // The server just sends back everything it gets.
-// Sets up a client that sends files and expects to recieve them back.
+// Sets up a client that sends files and expects to receive them back.
 
 main:
   network := net.open

@@ -7,6 +7,7 @@ import net
 
 // Connect to a test server on localhost.
 // Eg. made with https://pypi.org/project/simple-websocket-server/
+// or in Toit.
 // The server is expected to just echo back the packets it gets.
 
 main:
@@ -19,14 +20,13 @@ main:
     print "Message received: '$websocket.receive'"
     while reader := websocket.start_receiving:
       size := 0
-      text := reader.is_text ? "" : null
-      while ba := reader.read:
-        if text: text += ba.to_string
-        size += ba.size
-      if text:
-        print "Message received: '$text'"
+      data := #[]
+      while chunk := reader.read:
+        data += chunk
+      if reader.is_text:
+        print "Message received: '$data.to_string'"
       else:
-        print "Message received: size $size."
+        print "Message received: size $data.size."
 
   websocket.send "Hello, World!"
   websocket.send "Hello, World!"

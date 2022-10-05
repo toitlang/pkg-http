@@ -30,37 +30,36 @@ MAX_ONE_BYTE_SIZE_   ::= 125
 A WebSocket connection.
 A bidirectional socket connection capable of sending binary or text messages
   according to RFC 6455.
-Obtained from the $Client.web_socket method.
-Currently the server side setup is not implemented.
+Obtained from the $Client.web_socket or the $Server.web_socket methods.
 Currently does not implement ping and pong packets.
 */
 class WebSocket:
   socket_ /tcp.Socket
-  pending_ /ByteArray? := null
+  pending_ /ByteArray := #[]
   current_writer_ /WebSocketWriter? := null
   current_reader_ /WebSocketReader? := null
 
   constructor .socket_:
 
   read_ -> ByteArray?:
-    if pending_:
+    if pending_.size != 0:
       result := pending_
-      pending_ = null
+      pending_ = #[]
       return result
     return socket_.read
 
   unread_ byte_array/ByteArray -> none:
-    assert: pending_ == null
+    assert: pending_.size == 0
     pending_ = byte_array
 
   /**
   Reads a whole message, returning it as a string or a ByteArray.
   Returns null if the connection is closed.
-  Messages transmitted as text will be returned as strings.
-  Messages transmitted as binary will be returned as byte arrays.
+  Messages transmitted as text are returned as strings.
+  Messages transmitted as binary are returned as byte arrays.
   For connections with potentially large messages, consider using
     $start_receiving instead to stream the data.
-  With $force_byte_array it will return a byte array even if the
+  With $force_byte_array returns a byte array even if the
     peer marks the message as text.  This can be useful to avoid
     exceptions if the peer is marking invalid UTF-8 messages as
     text.
@@ -69,8 +68,8 @@ class WebSocket:
     reader := start_receiving
     if reader == null: return null
     list := []
-    while data := reader.read:
-      list.add data
+    while chunk := reader.read:
+      list.add chunk
     text := reader.is_text and not force_byte_array
     if list.size == 0: return text ? "" : #[]
     if list.size == 1: return text ? list[0].to_string : list[0]
@@ -113,11 +112,11 @@ class WebSocket:
     get_more := :
       next := socket_.read
       if next == null:
-        if pending_ == null: return null
+        if pending_.size == 0: return null
         throw "CONNECTION_CLOSED"
-      pending_ = pending_ ? pending_ + next : next
+      pending_ += next
 
-    while pending_ == null or pending_.size < 2: get_more.call
+    while pending_.size < 2: get_more.call
 
     masking := pending_[1] & 0x80 != 0
     len := pending_[1] & 0x7f
@@ -195,6 +194,8 @@ class WebSocket:
     current_reader_ = null
 
   static add_client_upgrade_headers_ headers/Headers -> string:
+    // The WebSocket nonce is not very important and does not need to be
+    // cryptographically random.
     nonce := base64.encode (ByteArray 16: random 0x100)
     headers.add "Connection" "upgrade"
     headers.add "Upgrade" "websocket"
@@ -230,11 +231,11 @@ class WebSocket:
     version_header := request.headers.single "Sec-WebSocket-Version"
     nonce := request.headers.single "Sec-WebSocket-Key"
     message := null
-    if nonce == null:                message="No nonce"
-    else if nonce.size != 24:        message="Bad nonce size"
-    else if connection_header != "upgrade": message="No Connection: upgrade"
-    else if upgrade_header != "websocket":  message="No Upgrade: websocket"
-    else if version_header != "13":         message="Unrecognized Websocket version"
+    if nonce == null:                       message = "No nonce"
+    else if nonce.size != 24:               message = "Bad nonce size"
+    else if connection_header != "upgrade": message = "No Connection: upgrade"
+    else if upgrade_header != "websocket":  message = "No Upgrade: websocket"
+    else if version_header != "13":         message = "Unrecognized Websocket version"
     else:
       response_writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
       response_writer.headers.add "Connection" "upgrade"
@@ -262,48 +263,57 @@ class WebSocketWriter:
   write data from=0 to=data.size -> int:
     if owner_ == null: throw "ALREADY_CLOSED"
     total_size := to - from
-    while true:
+    while from != to:
+      // If no more can be written in the current fragment we need to write a
+      // new fragment header.
+      if remaining_in_fragment_ == 0:
+        // Determine opcode for the new fragment.
+        opcode := data is string ? OPCODE_TEXT_ : OPCODE_BINARY_
+        if fragment_sent_:
+          opcode = OPCODE_CONTINUATION_
+        else:
+          fragment_sent_ = true
+
+        write_fragment_header_ (to - from) opcode
+
       while from < to and remaining_in_fragment_ != 0:
-        size := min to - from remaining_in_fragment_
+        size := min (to - from) remaining_in_fragment_
         // We don't use slices because data might be a string with UTF-8
         // sequences in it.
         owner_.write_ data from (from + size)
         from += size
         remaining_in_fragment_ -= size
-      if from == to: return total_size
 
-      opcode := data is string ? OPCODE_TEXT_ : OPCODE_BINARY_
-      if fragment_sent_:
-        opcode = OPCODE_CONTINUATION_
-      else:
-        fragment_sent_ = true
+    return total_size
 
-      header := ?
-      if size_:
-        // We know the size.  Write a single fragment with the fin flag and the
-        // exact size.
-        if opcode == OPCODE_CONTINUATION_: throw "TOO_MUCH_WRITTEN"
-        remaining_in_fragment_ = size_
-        if size_ > 0xffff:
-          header = ByteArray 10
-          header[1] = EIGHT_BYTE_SIZE_
-          BIG_ENDIAN.put_int64 header 2 size_
-        else if size_ > MAX_ONE_BYTE_SIZE_:
-          header = ByteArray 4
-          header[1] = TWO_BYTE_SIZE_
-          BIG_ENDIAN.put_uint16 header 2 size_
-        else:
-          header = ByteArray 2
-          header[1] = size_
-        header[0] = opcode | FIN_FLAG_
+  write_fragment_header_ max_size/int opcode/int:
+    header /ByteArray := ?
+    if size_:
+      // We know the size.  Write a single fragment with the fin flag and the
+      // exact size.
+      if opcode == OPCODE_CONTINUATION_: throw "TOO_MUCH_WRITTEN"
+      remaining_in_fragment_ = size_
+      if size_ > 0xffff:
+        header = ByteArray 10
+        header[1] = EIGHT_BYTE_SIZE_
+        BIG_ENDIAN.put_int64 header 2 size_
+      else if size_ > MAX_ONE_BYTE_SIZE_:
+        header = ByteArray 4
+        header[1] = TWO_BYTE_SIZE_
+        BIG_ENDIAN.put_uint16 header 2 size_
       else:
-        // We don't know the size.  Write multiple fragments of up to
-        // 126 bytes.
-        remaining_in_fragment_ = min MAX_ONE_BYTE_SIZE_ data.size - from
         header = ByteArray 2
-        header[0] = opcode
-        header[1] = remaining_in_fragment_
-      owner_.write_ header
+        header[1] = size_
+      header[0] = opcode | FIN_FLAG_
+    else:
+      // We don't know the size.  Write multiple fragments of up to
+      // 125 bytes.
+      remaining_in_fragment_ = min MAX_ONE_BYTE_SIZE_ max_size
+      header = ByteArray 2
+      header[0] = opcode
+      header[1] = remaining_in_fragment_
+
+    owner_.write_ header
 
   close:
     if remaining_in_fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
@@ -383,8 +393,7 @@ class FragmentReader_:
     return opcode < 3 or 8 <= opcode <= 10
 
   read -> ByteArray?:
-    if received_ == size_:
-      return null
+    if received_ == size_: return null
     next_byte_array := owner_.read_
     if next_byte_array == null: throw "CONNECTION_CLOSED"
     max := size_ - received_
@@ -400,6 +409,5 @@ class FragmentReader_:
     return next_byte_array
 
   size -> int?:
-    if control_bits_ & FIN_FLAG_ == 0:
-      return null
+    if control_bits_ & FIN_FLAG_ == 0: return null
     return size_

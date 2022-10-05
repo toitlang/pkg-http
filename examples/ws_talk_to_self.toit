@@ -1,12 +1,14 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the EXAMPLES_LICENSE file.
 
 import http
 import net
 
-// Connect to a test server on localhost.
-// Eg. made with https://pypi.org/project/simple-websocket-server/
+/**
+Example that demonstrates a web-socket client and server.
+The server simply echos back any incoming message.
+*/
 
 main:
   network := net.open
@@ -35,6 +37,8 @@ client_sending web_socket -> none:
   web_socket.send #[3, 4, 5]
 
 client_reading web_socket -> none:
+  // Each message can come with its own reader, which can be
+  // useful if messages are large.
   while reader := web_socket.start_receiving:
     size := 0
     text := reader.is_text ? "" : null
@@ -55,6 +59,8 @@ start_server network -> int:
       if request.path == "/":
         web_socket := server.web_socket request response_writer
         // The server end of the web socket just echoes back what it gets.
+        // Here we don't use a new reader for each message, but just get
+        // the message with a single call to `receive`.
         while data := web_socket.receive:
           print "Got $data"
           web_socket.send data
