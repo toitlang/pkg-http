@@ -6,11 +6,14 @@ import expect show *
 import http
 import net
 import encoding.json
+import certificate_roots
 
 HOST ::= "httpbin.org"
 PATH_GET ::= "/absolute-redirect/3"
-PATH_POST ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fpost&status_code=302"
-PATH_POST303 ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fget&status_code=303"
+
+PATH_POST     ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fpost&status_code=302"
+PATH_POST_TLS ::= "/redirect-to?url=https%3A%2F%2Fhttpbin.org%2F%2Fpost&status_code=302"
+PATH_POST303  ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fget&status_code=303"
 
 drain response/http.Response:
   while response.body.read: null
@@ -34,7 +37,7 @@ test_get network/net.Interface:
   drain response
 
 test_post network/net.Interface:
-  client := http.Client network
+  client := http.Client network --root_certificates=[certificate_roots.STARFIELD_CLASS_2_CA]
 
   response := client.post --host=HOST --path=PATH_POST #['h', 'e', 'l', 'l', 'o']
   data := #[]
@@ -44,6 +47,16 @@ test_post network/net.Interface:
   decoded := json.decode data
   expect_equals "hello" decoded["data"]
 
+  // Test that we can redirect from an HTTP to an HTTPS location.
+  response = client.post --host=HOST --path=PATH_POST_TLS #['h', 'e', 'l', 'l', 'o']
+  data = #[]
+  while chunk := response.body.read:
+    data += chunk
+  expect_equals 200 response.status_code
+  decoded = json.decode data
+  expect_equals "hello" decoded["data"]
+
+  // Test that we see the redirect if we ask not to follow redirects.
   response = client.post --host=HOST --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 302 response.status_code
   drain response

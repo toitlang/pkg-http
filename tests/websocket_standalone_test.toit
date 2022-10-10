@@ -18,7 +18,7 @@ main:
 run_client network port/int -> none:
   client := http.Client network
 
-  web_socket := client.web_socket "localhost:$port" "/"
+  web_socket := client.web_socket "localhost" --port=port "/"
 
   task:: client_reading web_socket
 
