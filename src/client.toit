@@ -533,6 +533,18 @@ class Client:
   default_port -> int:
     return use_tls_by_default_ ? 443 : 80
 
+// TODO: This is just a slower version of string.to_ascii_lower, which is in
+// newer SDKs.
+to_ascii_lower_ str/string -> string:
+  str.do:
+    if 'A' <= it <= 'Z':
+      byte_array := str.to_byte_array
+      byte_array.size.repeat:
+        if 'A' <= byte_array[it] <= 'Z':
+          byte_array[it] ^= 0x20
+      return byte_array.to_string
+  return str
+
 class ParsedUri_:
   scheme/string
   host/string
@@ -592,7 +604,7 @@ class ParsedUri_:
     if colon > 0:
       up_to_colon := url[..colon]
       if is_alpha_ up_to_colon:
-        scheme = up_to_colon.to_ascii_lower
+        scheme = to_ascii_lower_ up_to_colon
         url = url[colon + 1..]
     if url.contains "/" and not url.starts_with "//": throw "URI_PARSING_ERROR"
     if not SCHEMES_.contains scheme: throw "Unknown scheme: $scheme"

@@ -37,6 +37,11 @@ main:
   expect_equals null                parts.fragment
   expect                            parts.use_tls
 
+  parts = http.ParsedUri_.parse "WSS://api.example.com./end-point"
+  expect_equals "wss"               parts.scheme
+  parts = http.ParsedUri_.parse "htTPs://api.example.com./end-point"
+  expect_equals "https"               parts.scheme
+
   parts = http.ParsedUri_.parse "www.yahoo.com"
   expect_equals "https"         parts.scheme
   expect_equals "www.yahoo.com" parts.host
