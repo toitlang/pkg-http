@@ -78,7 +78,7 @@ class Client:
 
   /**
   Constructs a new client instance over the given interface.
-  The client will default to a insecure HTTP connection, but this can be
+  The client will default to an insecure HTTP connection, but this can be
     overridden by a redirect or a URI specifying a secure scheme.
   Therefore it can be meaningful to provide certificate roots despite the
     insecure default.
