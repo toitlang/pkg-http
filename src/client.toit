@@ -115,24 +115,35 @@ class Client:
     certificate_ = certificate
 
   /**
-  Creates a new request for the given URI, of the form
-    "http://www.example.com:1080/path/to/file#fragment" using the given method.
+  Creates a new request for $path on the given server ($host, $port) using the given method.
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
+
+  Instead of specifying $host and $path, you can specify a $uri, of the form
+    "http://www.example.com:1080/path/to/file#fragment".
 
   The returned $Request should be sent with $Request.send.
 
   The connection is automatically closed when the response's body ($Response.body) is
     completely read.
   */
-  new_request method/string --uri/string --headers/Headers=Headers -> Request:
-    parsed := ParsedUri_.parse uri
+  new_request method/string -> Request
+      --uri/string
+      --host/string?=null
+      --port/int?=null
+      --path/string?=null
+      --headers/Headers=Headers
+      --use_tls/bool?=null:
+    parsed := parse_ uri host port path use_tls --web_socket=false
     connection := new_connection_ parsed --auto_close
     request := connection.new_request method parsed.path headers
     return request
 
   /**
   Creates a new request for $host, $port, $path.
+
+  This method will not be in the next major version of the library -
+    instead use the version with the named host and path arguments.
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
@@ -148,7 +159,13 @@ class Client:
   If neither is specified then the default port is used.
   */
   new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> Request:
-    parsed := ParsedUri_ host path --port=port --scheme=(use_tls_by_default_ ? "https" : "http")
+    parsed := ParsedUri_.private_
+        --scheme=(use_tls_by_default_ ? "https" : "http")
+        --host=host
+        --port=port
+        --path=path
+        --parse_port_in_host=true
+    if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
     connection := new_connection_ parsed --auto_close
     request := connection.new_request method parsed.path headers
     return request
@@ -164,8 +181,10 @@ class Client:
     return true
 
   /**
-  Fetches data from the given URI, of the form
-    "http://www.example.com:1080/path/to/file#fragment" using the $GET method.
+  Fetches data for $path on the given server ($host, $port) with a GET request.
+
+  Instead of specifying $host and $path, you can specify a $uri, of the form
+    "http://www.example.com:1080/path/to/file#fragment".
 
   The connection is automatically closed when the response is completely read.
 
@@ -173,13 +192,22 @@ class Client:
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
-  get --uri/string --headers/Headers=Headers --follow_redirects/bool=true -> Response:
-    parsed := ParsedUri_.parse uri
-    if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
+  get -> Response
+      --uri/string?=null
+      --host/string?=null
+      --port/int?=null
+      --path/string?=null
+      --headers/Headers=Headers
+      --follow_redirects/bool=true
+      --use_tls/bool?=null:
+    parsed := parse_ uri host port path use_tls --web_socket=false
     return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
+
+  This method will not be in the next major version of the library -
+    instead use the version with the named host and path arguments.
 
   The connection is automatically closed when the response is completely read.
 
@@ -195,7 +223,12 @@ class Client:
     if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
     if headers.get "Host": throw "INVALID_ARGUMENT"
 
-    parsed := ParsedUri_ host path --port=port --scheme=(use_tls ? "https" : "http")
+    parsed := ParsedUri_.private_
+        --scheme=(use_tls ? "https" : "http")
+        --host=host
+        --port=port
+        --path=path
+        --parse_port_in_host
     return get_ parsed headers --follow_redirects=follow_redirects
 
   get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
@@ -217,55 +250,25 @@ class Client:
 
   get_location_ response/Response previous/ParsedUri_ -> ParsedUri_:
     location := response.headers.single "Location"
-    return ParsedUri_.parse location --previous=previous
+    return ParsedUri_.parse_ location --previous=previous
 
   /**
-  Makes an HTTP connection, then immediately upgrades to a $WebSocket connection.
-  Connects to the given URI, of the form "wss://api.example.com:1080/path/to/end-point".
+  Makes an HTTP/HTTPS connection to the given server ($host, $port), then
+    immediately upgrades to a $WebSocket connection with the given $path.
+  Instead of specifying $host and $path, you can specify a $uri, of the form
+    "http://www.example.com:1080/path/to/file".
   After this call, this client can no longer be used for regular HTTP requests.
   */
-  web_socket --uri/string --headers=Headers --follow_redirects/bool=true -> WebSocket:
-    return web_socket --uri=uri --headers=headers --follow_redirects=follow_redirects: | response |
-      if response == null: throw "Too many redirects"
-      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
+  web_socket -> WebSocket
+      --uri/string?=null
+      --host/string?=null
+      --port/int?=null
+      --path/string?=null
+      --headers=Headers
+      --follow_redirects/bool=true
+      --use_tls/bool?=null:
+    parsed := parse_ uri host port path use_tls --web_socket
 
-  /**
-  Makes an HTTP connection, then immediately upgrades to a $WebSocket connection.
-  Connects to the given URI, of the form "wss://api.example.com:1080/path/to/end-point".
-  On an error, the block is called with the $Response as its argument.
-  In the case that there are too many redirects, the block is called with null
-    as its argument.
-  After this call, this client can no longer be used for regular HTTP requests.
-  */
-  web_socket --uri/string --headers=Headers --follow_redirects/bool=true [on_error] -> WebSocket:
-    if headers.get "Host": throw "INVALID_ARGUMENT"
-    parsed := ParsedUri_.parse uri
-    if not parsed.scheme.starts_with "ws": throw "INVALID_SCHEME"
-    return web_socket_ parsed --headers=headers --follow_redirects=follow_redirects on_error
-
-  /**
-  Makes an HTTP connection, then immediately upgrades to a $WebSocket connection.
-  On error, throws an exception.
-  After this call, this client can no longer be used for regular HTTP requests.
-  */
-  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true -> WebSocket:
-    return web_socket host --port=port path --headers=headers --follow_redirects=follow_redirects: | response |
-      if response == null: throw "Too many redirects"
-      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
-
-  /**
-  Makes an HTTP connection, then immediately upgrades to a $WebSocket connection.
-  On an error, the block is called with the $Response as its argument.
-  In the case that there are too many redirects, the block is called with null
-    as its argument.
-  After this call, this client can no longer be used for regular HTTP requests.
-  */
-  web_socket host/string --port/int?=null path/string --headers=Headers --follow_redirects/bool=true --use_tls=use_tls_by_default_ [on_error] -> WebSocket:
-    if headers.get "Host": throw "INVALID_ARGUMENT"
-    parsed := ParsedUri_ host path --port=port --scheme=(use_tls ? "wss" : "ws")
-    return web_socket_ parsed --headers=headers --follow_redirects=follow_redirects on_error
-
-  web_socket_ parsed --headers/Headers --follow_redirects/bool [on_error] -> WebSocket:
     MAX_REDIRECTS.repeat:
       connection := new_connection_ parsed --auto_close=false
       nonce := WebSocket.add_client_upgrade_headers_ headers
@@ -279,10 +282,9 @@ class Client:
         parsed = get_location_ response parsed
         continue.repeat
       else:
-        WebSocket.check_client_upgrade_response_ response nonce on_error
+        WebSocket.check_client_upgrade_response_ response nonce
         return WebSocket connection.socket_
 
-    on_error.call null
     throw "TOO_MANY_REDIRECTS"
 
   /**
@@ -333,20 +335,33 @@ class Client:
       --follow_redirects/bool=true
       --use_tls/bool?=null:
 
-    parsed := parse_ uri host port path use_tls
+    parsed := parse_ uri host port path use_tls --web_socket=false
 
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
-  parse_ uri/string? host/string? port/int? path/string? use_tls/bool? -> ParsedUri_:
+  parse_ uri/string? host/string? port/int? path/string? use_tls/bool? --web_socket/bool? -> ParsedUri_:
+    default_scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
+        ? (web_socket ? "wss" : "https")
+        : (web_socket ? "ws" : "http")
     if uri:
-      if host or port or path or use_tls: throw "Cannot combine --uri with host, port or path arguments"
-      return ParsedUri_.parse uri
+      if host or port or path: throw "Cannot combine --uri with host, port, or path arguments"
+      result := ParsedUri_.parse_ uri --default_scheme=default_scheme
+      // If the user uses the use_tls flag, but supplies a URI that parses to
+      // something else we throw rather than just guessing what they actually
+      // wanted.  A redirect can still switch the Client between TLS and non-TLS.
+      if use_tls and (result.scheme == "http" or result.scheme == "ws"): throw "Requested TLS, but URI specifies non-TLS"
+      if use_tls == false and (result.scheme == "https" or result.scheme == "wss"): throw "Requested no TLS, but URI specifies TLS"
+      if web_socket == true and result.scheme.starts_with "http": throw "INVALID_SCHEME"
+      if web_socket == false and result.scheme.starts_with "ws": throw "INVALID_SCHEME"
+      return result
     else:
       if not host or not path: throw "Must specify either --uri or --host and --path"
-      scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
-          ? "https"
-          : "http"
-      return ParsedUri_ host path --port=port --scheme=scheme
+      return ParsedUri_.private_
+          --scheme=default_scheme
+          --host=host
+          --port=port
+          --path=path
+          --parse_port_in_host=false
 
   post_ data/ByteArray parsed/ParsedUri_ -> Response
       --headers/Headers
@@ -414,7 +429,7 @@ class Client:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
 
-    parsed := parse_ uri host port path use_tls
+    parsed := parse_ uri host port path use_tls --web_socket=false
 
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
@@ -471,7 +486,7 @@ class Client:
         url_encode_ value
     encoded := buffer.bytes
 
-    parsed := parse_ uri host port path use_tls
+    parsed := parse_ uri host port path use_tls --web_socket=false
 
     return post_ encoded parsed --headers=headers --content_type="application/x-www-form-urlencoded" --follow_redirects=follow_redirects
 
@@ -560,11 +575,11 @@ class ParsedUri_:
       "ws": 80
   }
 
-  constructor
+  constructor.private_
       --.scheme/string="https"
-      host/string
+      --host/string
       --port/int?=null
-      .path/string
+      --.path/string
       --.fragment=null
       --parse_port_in_host/bool=true:
     colon := host.index_of ":"
@@ -580,16 +595,17 @@ class ParsedUri_:
 
   stringify -> string: return "$scheme://$host_with_port$path$(fragment ? "#$fragment" : "")"
 
-  constructor.parse url/string --previous/ParsedUri_?=null:
-    values := parse_ url
-    new_scheme := values[0]
+  // When redirecting we need to take the old URI into account to interpret the new one.
+  constructor.parse_ uri/string --previous/ParsedUri_?=null:
+    parsed := ParsedUri_.parse_ uri --default_scheme=null
+    new_scheme := parsed.scheme
     if previous and (new_scheme.starts_with "ws") != (previous.scheme.starts_with "ws"):
       throw "INVALID_REDIRECT"  // Can't redirect a WebSockets URI to an HTTP URI or vice versa.
     scheme = new_scheme
-    host = values[1]
-    port = values[2]
-    path = values[3]
-    fragment = values[4] ? values[4] : (previous ? previous.fragment : null)
+    host = parsed.host
+    port = parsed.port
+    path = parsed.path
+    fragment = parsed.fragment ? parsed.fragment : (previous ? previous.fragment : null)
     use_tls = (SCHEMES_[new_scheme] == 443)
 
   /// Returns the hostname, with the port appended if it is non-default.
@@ -597,38 +613,44 @@ class ParsedUri_:
     default_port := SCHEMES_[scheme]
     return default_port == port ? host : "$host:$port"
 
-  static parse_ url/string -> List:
-    colon := url.index_of ":/"
-    scheme := "https"
+  constructor.parse_ uri/string --default_scheme/string?:
+    colon := uri.index_of ":/"
+    scheme/string? := default_scheme
     // Recognize a prefix like "https:/"
     if colon > 0:
-      up_to_colon := url[..colon]
+      up_to_colon := uri[..colon]
       if is_alpha_ up_to_colon:
         scheme = to_ascii_lower_ up_to_colon
-        url = url[colon + 1..]
-    if url.contains "/" and not url.starts_with "//": throw "URI_PARSING_ERROR"
-    if not SCHEMES_.contains scheme: throw "Unknown scheme: $scheme"
-    if url.starts_with "//": url = url[2..]
+        uri = uri[colon + 1..]
+    if uri.contains "/" and not uri.starts_with "//": throw "URI_PARSING_ERROR"
+    if not scheme or not SCHEMES_.contains scheme: throw "Unknown scheme: $scheme"
+    if uri.starts_with "//": uri = uri[2..]
     host := null
     port := null
     path := ?
-    slash := url.index_of "/"
+    slash := uri.index_of "/"
     // Named block.
     get_host_and_port := : | h p |
       host = h
       port = p
     if slash < 0:
-      extract_host_with_optional_port_ scheme url get_host_and_port
+      extract_host_with_optional_port_ scheme uri get_host_and_port
       path = "/"
     else:
-      extract_host_with_optional_port_ scheme url[..slash] get_host_and_port
-      path = url[slash..]
+      extract_host_with_optional_port_ scheme uri[..slash] get_host_and_port
+      path = uri[slash..]
     hash := path.index_of "#"
     fragment := null
     if hash > 0:
       fragment = path[hash + 1..]
       path = path[..hash]
-    return [scheme, host, port, path, fragment]
+    return ParsedUri_.private_
+        --scheme=scheme
+        --host=host
+        --port=port
+        --path=path
+        --fragment=fragment
+        --parse_port_in_host=false
 
   static extract_host_with_optional_port_ scheme/string combined/string [block] -> none:
     colon := combined.index_of ":"

@@ -204,10 +204,9 @@ class WebSocket:
     headers.add "Sec-WebSocket-Version" "13"
     return nonce
 
-  static check_client_upgrade_response_ response/Response nonce/string [on_error] -> none:
+  static check_client_upgrade_response_ response/Response nonce/string -> none:
     if response.status_code != STATUS_SWITCHING_PROTOCOLS:
-      on_error.call response
-      throw response.stringify
+      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
     upgrade_header := response.headers.single "Upgrade"
     connection_header := response.headers.single "Connection"
     if not upgrade_header
