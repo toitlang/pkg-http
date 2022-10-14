@@ -115,12 +115,26 @@ class Client:
     certificate_ = certificate
 
   /**
+  Variant of $(new_request --host).
+
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "http" (no "s") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  new_request method/string -> Request
+      --uri/string
+      --headers/Headers=Headers:
+    parsed := parse_ uri --web_socket=false
+    connection := new_connection_ parsed --auto_close
+    request := connection.new_request method parsed.path headers
+    return request
+
+  /**
   Creates a new request for $path on the given server ($host, $port) using the given method.
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
-
-  Instead of specifying $host and $path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path/to/file#fragment".
 
   The returned $Request should be sent with $Request.send.
 
@@ -128,13 +142,12 @@ class Client:
     completely read.
   */
   new_request method/string -> Request
-      --uri/string
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers/Headers=Headers
       --use_tls/bool?=null:
-    parsed := parse_ uri host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls --web_socket=false
     connection := new_connection_ parsed --auto_close
     request := connection.new_request method parsed.path headers
     return request
@@ -181,26 +194,42 @@ class Client:
     return true
 
   /**
-  Fetches data for $path on the given server ($host, $port) with a GET request.
+  Variant of $(get --host).
 
-  Instead of specifying $host and $path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path/to/file#fragment".
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "http" (no "s") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  get -> Response
+      --uri/string
+      --headers/Headers=Headers
+      --follow_redirects/bool=true:
+    parsed := parse_ uri --web_socket=false
+    return get_ parsed headers --follow_redirects=follow_redirects
+
+  /**
+  Fetches data for $path on the given server ($host, $port) with a GET request.
 
   The connection is automatically closed when the response is completely read.
 
-  If no port is specified then the default port is used.
+  If no port is specified then the default port is used.  The $host is not
+    parsed for a port number (but see $(get --uri)).
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
+
+  The $use_tls argument can be used to override the default TLS usage of the
+    client.
   */
   get -> Response
-      --uri/string?=null
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers/Headers=Headers
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ uri host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls --web_socket=false
     return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
@@ -253,22 +282,44 @@ class Client:
     return ParsedUri_.parse_ location --previous=previous
 
   /**
+  Variant of $(web_socket --host).
+
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "ws:" (not "wss:") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  web_socket -> WebSocket
+      --uri/string
+      --headers=Headers
+      --follow_redirects/bool=true:
+    parsed := parse_ uri --web_socket
+    return web_socket_ parsed headers follow_redirects
+
+  /**
   Makes an HTTP/HTTPS connection to the given server ($host, $port), then
     immediately upgrades to a $WebSocket connection with the given $path.
-  Instead of specifying $host and $path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path/to/file".
+
+  If no port is specified then the default port is used.  The $host is not
+    parsed for a port number (but see $(web_socket --uri)).
+
+  The $use_tls argument can be used to override the default TLS usage of the
+    client.
+
   After this call, this client can no longer be used for regular HTTP requests.
   */
   web_socket -> WebSocket
-      --uri/string?=null
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers=Headers
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ uri host port path use_tls --web_socket
+    parsed := parse_ host port path use_tls --web_socket
+    return web_socket_ parsed headers follow_redirects
 
+  web_socket_ parsed/ParsedUri_ headers/Headers follow_redirects/bool -> WebSocket:
     MAX_REDIRECTS.repeat:
       connection := new_connection_ parsed --auto_close=false
       nonce := WebSocket.add_client_upgrade_headers_ headers
@@ -301,24 +352,42 @@ class Client:
     headers.remove "Transfer-Encoding"
 
   /**
-  Posts data on $path for the given server ($host, $port) using the $POST method.
+  Variant of $(post data --host).
 
-  Instead of specifying host and path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path".
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "http" (no "s") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  post data/ByteArray -> Response
+      --uri/string
+      --headers/Headers=Headers
+      --content_type/string?=null
+      --follow_redirects/bool=true:
+    parsed := parse_ uri --web_socket=false
+    return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
+
+  /**
+  Posts data on $path for the given server ($host, $port) using the $POST method.
 
   The connection is automatically closed when the response is completely read.
 
-  A port can be provided in three ways:
-  - using the $uri parameter, or
+  A port can be provided in two ways:
   - using the $port parameter, or
-  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+  - suffixing the $host parameter with ":port", for example `localhost:8080`. (Not recommended)
 
-  If no port is specified then the default port is used.
+  If no port is specified then the default port is used.  The $host is
+    parsed for a port number, but this feature will not be in the next major
+    version of this library.  See $(post --uri).
 
   If $content_type is not null, sends the content type header with that value.
     If the content type is given, then the $headers must not contain any "Content-Type" entry.
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
+
+  The $use_tls argument can be used to override the default TLS usage of the
+    client.
 
   # Advanced
   If the data can be generated dynamically, it's more efficient to create a new
@@ -326,44 +395,37 @@ class Client:
     the data only when needed.
   */
   post data/ByteArray -> Response
-      --uri/string?=null
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers/Headers=Headers
       --content_type/string?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-
-    parsed := parse_ uri host port path use_tls --web_socket=false
-
+    parsed := parse_ host port path use_tls --web_socket=false
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
+
+  parse_ uri/string --web_socket/bool -> ParsedUri_:
+    default_scheme := use_tls_by_default_
+        ? (web_socket ? "wss" : "https")
+        : (web_socket ? "ws" : "http")
+    result := ParsedUri_.parse_ uri --default_scheme=default_scheme
+    if web_socket == true and result.scheme.starts_with "http": throw "INVALID_SCHEME"
+    if web_socket == false and result.scheme.starts_with "ws": throw "INVALID_SCHEME"
+    return result
 
   /// Rather than verbose named args, this private method has the args in the
   /// order in which they appear in a URI.
-  parse_ uri/string? host/string? port/int? path/string? use_tls/bool? --web_socket/bool -> ParsedUri_:
+  parse_ host/string port/int? path/string use_tls/bool? --web_socket/bool -> ParsedUri_:
     default_scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
         ? (web_socket ? "wss" : "https")
         : (web_socket ? "ws" : "http")
-    if uri:
-      if host or port or path: throw "Cannot combine --uri with host, port, or path arguments"
-      result := ParsedUri_.parse_ uri --default_scheme=default_scheme
-      // If the user uses the use_tls flag, but supplies a URI that parses to
-      // something else, we throw rather than just guessing what they actually
-      // wanted.  A redirect can still switch the Client between TLS and non-TLS.
-      if use_tls and (result.scheme == "http" or result.scheme == "ws"): throw "Requested TLS, but URI specifies non-TLS"
-      if use_tls == false and (result.scheme == "https" or result.scheme == "wss"): throw "Requested no TLS, but URI specifies TLS"
-      if web_socket == true and result.scheme.starts_with "http": throw "INVALID_SCHEME"
-      if web_socket == false and result.scheme.starts_with "ws": throw "INVALID_SCHEME"
-      return result
-    else:
-      if not host or not path: throw "Must specify either --uri or --host and --path"
-      return ParsedUri_.private_
-          --scheme=default_scheme
-          --host=host
-          --port=port
-          --path=path
-          --parse_port_in_host=false
+    return ParsedUri_.private_
+        --scheme=default_scheme
+        --host=host
+        --port=port
+        --path=path
+        --parse_port_in_host=false
 
   post_ data/ByteArray parsed/ParsedUri_ -> Response
       --headers/Headers
@@ -400,10 +462,25 @@ class Client:
     throw "Too many redirects"
 
   /**
-  Posts the $object on $path for the given server ($host, $port) using the $POST method.
+  Variant of $(post_json object --host).
 
-  Instead of specifying host and path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path".
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "http" (no "s") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  post_json object/any -> Response
+      --uri/string
+      --headers/Headers=Headers
+      --follow_redirects/bool=true:
+    // TODO(florian): we should create the json dynamically.
+    encoded := json.encode object
+    parsed := parse_ uri --web_socket=false
+    return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
+
+  /**
+  Posts the $object on $path for the given server ($host, $port) using the $POST method.
 
   Encodes the $object first as JSON.
 
@@ -411,35 +488,46 @@ class Client:
 
   The connection is automatically closed when the response is completely read.
 
-  A port can be provided in three ways:
-  - using the $uri parameter, or
+  A port can be provided in two ways:
   - using the $port parameter, or
-  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+  - suffixing the $host parameter with ":port", for example `localhost:8080`. (Not recommended.)
 
-  If no port is specified then the default port is used.
+  If no port is specified then the default port is used.  The $host is
+    parsed for a port number, but this feature will not be in the next major
+    version of this library.  See $(post_json object --uri).
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   post_json object/any -> Response
-      --uri/string?=null
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers/Headers=Headers
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
-
-    parsed := parse_ uri host port path use_tls --web_socket=false
-
+    parsed := parse_ host port path use_tls --web_socket=false
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
   /**
-  Posts the $map on $path for the given server ($host, $port) using the $POST method.
+  Variant of $(post_form map --host).
 
-  Instead of specifying host and path, you can specify a $uri, of the form
-    "http://www.example.com:1080/path".
+  Instead of specifying host and path, this variant lets you specify a $uri, of
+    the form "http://www.example.com:1080/path/to/file#fragment".
+
+  A URI that starts with "http" (no "s") will disable TLS even if the Client
+    was created as a TLS client.
+  */
+  post_form map/Map -> Response
+      --uri/string
+      --headers/Headers=Headers
+      --follow_redirects/bool=true:
+    parsed := parse_ uri --web_socket=false
+    return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
+
+  /**
+  Posts the $map on $path for the given server ($host, $port) using the $POST method.
 
   Encodes the $map using URL encoding, like an HTML form submit button.
     For example: "from=123&to=567".
@@ -453,23 +541,30 @@ class Client:
 
   The connection is automatically closed when the response is completely read.
 
-  A port can be provided in three ways:
-  - using the $uri parameter, or
+  A port can be provided in two ways:
   - using the $port parameter, or
-  - suffixing the $host parameter with ":port", for example `localhost:8080`.
+  - suffixing the $host parameter with ":port", for example `localhost:8080`. (Not recommended.)
 
-  If no port is specified then the default port is used.
+  If no port is specified then the default port is used.  The $host is
+    parsed for a port number, but this feature will not be in the next major
+    version of this library.  See $(post_form map --uri).
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   post_form map/Map -> Response
-      --uri/string?=null
-      --host/string?=null
+      --host/string
       --port/int?=null
-      --path/string?=null
+      --path/string="/"
       --headers/Headers=Headers
       --follow_redirects/bool=true
       --use_tls/bool?=null:
+    parsed := parse_ host port path use_tls --web_socket=false
+    return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
+
+
+  post_form_ map/Map parsed/ParsedUri_ -> Response
+      --headers/Headers=Headers
+      --follow_redirects/bool=true:
     buffer := bytes.Buffer
     first := true
     map.do: | key value |
@@ -487,8 +582,6 @@ class Client:
       buffer.write
         url_encode_ value
     encoded := buffer.bytes
-
-    parsed := parse_ uri host port path use_tls --web_socket=false
 
     return post_ encoded parsed --headers=headers --content_type="application/x-www-form-urlencoded" --follow_redirects=follow_redirects
 
@@ -607,7 +700,7 @@ class ParsedUri_:
     host = parsed.host
     port = parsed.port
     path = parsed.path
-    fragment = parsed.fragment ? parsed.fragment : (previous ? previous.fragment : null)
+    fragment = parsed.fragment or (previous ? previous.fragment : null)
     use_tls = (SCHEMES_[new_scheme] == 443)
 
   /// Returns the hostname, with the port appended if it is non-default.
