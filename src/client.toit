@@ -339,7 +339,9 @@ class Client:
 
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
-  parse_ uri/string? host/string? port/int? path/string? use_tls/bool? --web_socket/bool? -> ParsedUri_:
+  /// Rather than verbose named args, this private method has the args in the
+  /// order in which they appear in a URI.
+  parse_ uri/string? host/string? port/int? path/string? use_tls/bool? --web_socket/bool -> ParsedUri_:
     default_scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
         ? (web_socket ? "wss" : "https")
         : (web_socket ? "ws" : "http")
@@ -347,7 +349,7 @@ class Client:
       if host or port or path: throw "Cannot combine --uri with host, port, or path arguments"
       result := ParsedUri_.parse_ uri --default_scheme=default_scheme
       // If the user uses the use_tls flag, but supplies a URI that parses to
-      // something else we throw rather than just guessing what they actually
+      // something else, we throw rather than just guessing what they actually
       // wanted.  A redirect can still switch the Client between TLS and non-TLS.
       if use_tls and (result.scheme == "http" or result.scheme == "ws"): throw "Requested TLS, but URI specifies non-TLS"
       if use_tls == false and (result.scheme == "https" or result.scheme == "wss"): throw "Requested no TLS, but URI specifies TLS"
