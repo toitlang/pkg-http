@@ -115,7 +115,7 @@ class Client:
     certificate_ = certificate
 
   /**
-  Variant of $(new_request --host).
+  Variant of $(new_request method --host).
 
   Instead of specifying host and path, this variant lets you specify a $uri, of
     the form "http://www.example.com:1080/path/to/file#fragment".
@@ -379,7 +379,7 @@ class Client:
 
   If no port is specified then the default port is used.  The $host is
     parsed for a port number, but this feature will not be in the next major
-    version of this library.  See $(post --uri).
+    version of this library.  See $(post data --uri).
 
   If $content_type is not null, sends the content type header with that value.
     If the content type is given, then the $headers must not contain any "Content-Type" entry.
