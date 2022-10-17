@@ -14,7 +14,7 @@ main:
   network := net.open
   client := http.Client network
 
-  websocket := client.web_socket "localhost:8000" "/"
+  websocket := client.web_socket --host="localhost" --port=8000
 
   task --background::
     print "Message received: '$websocket.receive'"
