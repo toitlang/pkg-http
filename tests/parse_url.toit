@@ -6,30 +6,30 @@ import http
 import expect show *
 
 main:
-  parts := http.ParsedUri_.parse "https://www.youtube.com/watch?v=2HJxya0CWco#t=0m6s"
+  parts := http.ParsedUri_.parse_ "https://www.youtube.com/watch?v=2HJxya0CWco#t=0m6s"
   expect_equals "https"                parts.scheme
   expect_equals "www.youtube.com"      parts.host
   expect_equals 443                    parts.port
   expect_equals "/watch?v=2HJxya0CWco" parts.path
   expect_equals "t=0m6s"               parts.fragment
 
-  http.ParsedUri_.parse                                   "https://www.youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www.youtube.com-/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www.youtube.-com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www.youtube-.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www.-youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www-.youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://-www.youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://.www.youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www..youtube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www..y'utube.com/watch?v=2HJxya0CWco"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "https://www..yøutube.com/watch?v=2HJxya0CWco"
+  http.ParsedUri_.parse_                                   "https://www.youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.youtube.com-/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.youtube.-com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.youtube-.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.-youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www-.youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://-www.youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://.www.youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www..youtube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www..y'utube.com/watch?v=2HJxya0CWco"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www..yøutube.com/watch?v=2HJxya0CWco"
 
-  expect_throw "Unknown scheme: fisk": http.ParsedUri_.parse "fisk://fishing.net/"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "/a/relative/url"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse "http:/127.0.0.1/path"
+  expect_throw "Unknown scheme: fisk": http.ParsedUri_.parse_ "fisk://fishing.net/"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "/a/relative/url"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "http:/127.0.0.1/path"
 
-  parts = http.ParsedUri_.parse "wss://api.example.com./end-point"
+  parts = http.ParsedUri_.parse_ "wss://api.example.com./end-point"
   expect_equals "wss"               parts.scheme
   expect_equals "api.example.com."  parts.host
   expect_equals 443                 parts.port
@@ -37,12 +37,12 @@ main:
   expect_equals null                parts.fragment
   expect                            parts.use_tls
 
-  parts = http.ParsedUri_.parse "WSS://api.example.com./end-point"
+  parts = http.ParsedUri_.parse_ "WSS://api.example.com./end-point"
   expect_equals "wss"               parts.scheme
-  parts = http.ParsedUri_.parse "htTPs://api.example.com./end-point"
+  parts = http.ParsedUri_.parse_ "htTPs://api.example.com./end-point"
   expect_equals "https"               parts.scheme
 
-  parts = http.ParsedUri_.parse "www.yahoo.com"
+  parts = http.ParsedUri_.parse_ "www.yahoo.com" --default_scheme="https"
   expect_equals "https"         parts.scheme
   expect_equals "www.yahoo.com" parts.host
   expect_equals 443             parts.port
@@ -50,7 +50,7 @@ main:
   expect_equals null            parts.fragment
   expect                        parts.use_tls
 
-  parts = http.ParsedUri_.parse "localhost:1080"
+  parts = http.ParsedUri_.parse_ "localhost:1080" --default_scheme="https"
   expect_equals "https"     parts.scheme
   expect_equals "localhost" parts.host
   expect_equals 1080        parts.port
@@ -58,7 +58,7 @@ main:
   expect_equals null        parts.fragment
   expect                    parts.use_tls
 
-  parts = http.ParsedUri_.parse "127.0.0.1:1080"
+  parts = http.ParsedUri_.parse_ "127.0.0.1:1080" --default_scheme="https"
   expect_equals "https"     parts.scheme
   expect_equals "127.0.0.1" parts.host
   expect_equals 1080        parts.port
@@ -66,7 +66,7 @@ main:
   expect_equals null        parts.fragment
   expect                    parts.use_tls
 
-  parts = http.ParsedUri_.parse "http://localhost:1080/"
+  parts = http.ParsedUri_.parse_ "http://localhost:1080/"
   expect_equals "http"      parts.scheme
   expect_equals "localhost" parts.host
   expect_equals 1080        parts.port
@@ -74,7 +74,7 @@ main:
   expect_equals null        parts.fragment
   expect_not                parts.use_tls
 
-  parts = http.ParsedUri_.parse "http://localhost:1080/#"
+  parts = http.ParsedUri_.parse_ "http://localhost:1080/#"
   expect_equals "http"      parts.scheme
   expect_equals "localhost" parts.host
   expect_equals 1080        parts.port
@@ -82,7 +82,7 @@ main:
   expect_equals ""          parts.fragment
   expect_not                parts.use_tls
 
-  parts = http.ParsedUri_.parse "http://localhost:1080/#x"
+  parts = http.ParsedUri_.parse_ "http://localhost:1080/#x"
   expect_equals "http"      parts.scheme
   expect_equals "localhost" parts.host
   expect_equals 1080        parts.port
@@ -90,7 +90,7 @@ main:
   expect_equals "x"         parts.fragment
   expect_not                parts.use_tls
 
-  parts = http.ParsedUri_.parse "ws://xn--us--um5a.com/schneemann"
+  parts = http.ParsedUri_.parse_ "ws://xn--us--um5a.com/schneemann"
   expect_equals "ws"               parts.scheme
   expect_equals "xn--us--um5a.com" parts.host
   expect_equals 80                 parts.port
@@ -98,7 +98,7 @@ main:
   expect_equals null               parts.fragment
   expect_not                       parts.use_tls
 
-  parts = http.ParsedUri_.parse "//127.0.0.1/path"
+  parts = http.ParsedUri_.parse_ "//127.0.0.1/path" --default_scheme="https"
   expect_equals "https"            parts.scheme
   expect_equals "127.0.0.1"        parts.host
   expect_equals 443                parts.port
@@ -106,7 +106,7 @@ main:
   expect_equals null               parts.fragment
   expect                           parts.use_tls
 
-  parts = http.ParsedUri_.parse "http://127.0.0.1/path"
+  parts = http.ParsedUri_.parse_ "http://127.0.0.1/path"
   expect_equals "http"             parts.scheme
   expect_equals "127.0.0.1"        parts.host
   expect_equals 80                 parts.port
@@ -114,7 +114,7 @@ main:
   expect_equals null               parts.fragment
   expect_not                       parts.use_tls
 
-  parts = http.ParsedUri_.parse "https://original.com/foo#fraggy"
+  parts = http.ParsedUri_.parse_ "https://original.com/foo#fraggy"
   expect_equals "https"            parts.scheme
   expect_equals "original.com"     parts.host
   expect_equals 443                parts.port
@@ -122,7 +122,7 @@ main:
   expect_equals "fraggy"           parts.fragment
   expect                           parts.use_tls
 
-  parts = http.ParsedUri_.parse --previous=parts "http://redirect.com/bar"
+  parts = http.ParsedUri_.parse_ --previous=parts "http://redirect.com/bar"
   expect_equals "http"             parts.scheme  // Changed in accordance with redirect.
   expect_equals "redirect.com"     parts.host
   expect_equals 80                 parts.port
@@ -131,4 +131,4 @@ main:
   expect_not                       parts.use_tls
 
   // Can't redirect an HTTP connection to a WebSockets connection.
-  expect_throw "INVALID_REDIRECT": parts = http.ParsedUri_.parse --previous=parts "wss://socket.redirect.com/api"
+  expect_throw "INVALID_REDIRECT": parts = http.ParsedUri_.parse_ --previous=parts "wss://socket.redirect.com/api"
