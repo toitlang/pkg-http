@@ -747,29 +747,52 @@ class ParsedUri_:
         --fragment=fragment
         --parse_port_in_host=false
 
-  static extract_host_with_optional_port_ scheme/string combined/string [block] -> none:
-    colon := combined.index_of ":"
-    host := ?
-    port := ?
-    if colon < 0:
-      port = SCHEMES_[scheme]
-      host = combined
+  static extract_host_with_optional_port_ scheme/string host/string [block] -> none:
+    // Four cases:
+    // 1) host
+    // 2) host:port
+    port := SCHEMES_[scheme]
+    ipv6 := false
+    colon := host.index_of --last ":"
+    if host.starts_with "[":
+      // either [ipv6-address] or [ipv6-address]:port
+      // This is a little tricky because the IPv6 address contains colons.
+      square_end := host.index_of "]"
+      if square_end < 0 or colon > square_end + 1:
+        throw "URI_PARSING_ERROR"
+      if colon > square_end:
+        port = int.parse host[colon + 1..]
+        host = host[1..square_end]
+      else:
+        if square_end != host.size - 1:
+          throw "URI_PARSING_ERROR"
+        host = host[1..square_end]
+      ipv6 = true
     else:
-      port = int.parse combined[colon + 1..]
-      host = combined[..colon]
+      if colon > 0:
+        port = int.parse host[colon + 1..]
+        host = host[..colon]
     if host.size == 0 or host[0] == '.': throw "URI_PARSING_ERROR"
     previous := '.'
-    host.do:
-      if it == '-':
-        if previous == '.': throw "URI_PARSING_ERROR"
-      else if it == '.':
-        if previous == '-' or previous == '.': throw "URI_PARSING_ERROR"
-      else if not '0' <= it <= '9'
-          and not 'A' <= it <= 'Z'
-          and not 'a' <= it <= 'z'
-          and not it == '.':
-        throw "ILLEGAL_HOSTNAME"
-      previous = it
+    if ipv6:
+      host.do:
+        if      not '0' <= it <= '9'
+            and not 'a' <= it <= 'f'
+            and not 'A' <= it <= 'F'
+            and not it == ':':
+          throw "ILLEGAL_HOSTNAME"
+    else:
+      host.do:
+        if it == '-':
+          if previous == '.': throw "URI_PARSING_ERROR"
+        else if it == '.':
+          if previous == '-' or previous == '.': throw "URI_PARSING_ERROR"
+        else if not '0' <= it <= '9'
+            and not 'A' <= it <= 'Z'
+            and not 'a' <= it <= 'z'
+            and not it == '.':
+          throw "ILLEGAL_HOSTNAME"
+        previous = it
     if host[host.size - 1] == '-': throw "URI_PARSING_ERROR"
     block.call host port
 
