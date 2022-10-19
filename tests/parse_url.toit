@@ -132,3 +132,35 @@ main:
 
   // Can't redirect an HTTP connection to a WebSockets connection.
   expect_throw "INVALID_REDIRECT": parts = http.ParsedUri_.parse_ --previous=parts "wss://socket.redirect.com/api"
+
+  parts = http.ParsedUri_.parse_ "https://[::]/foo#fraggy"
+  expect_equals "https"            parts.scheme
+  expect_equals "::"               parts.host
+  expect_equals 443                parts.port
+  expect_equals "/foo"             parts.path
+  expect_equals "fraggy"           parts.fragment
+  expect                           parts.use_tls
+
+  parts = http.ParsedUri_.parse_ "https://[1234::7890]/foo#fraggy"
+  expect_equals "https"            parts.scheme
+  expect_equals "1234::7890"       parts.host
+  expect_equals 443                parts.port
+  expect_equals "/foo"             parts.path
+  expect_equals "fraggy"           parts.fragment
+  expect                           parts.use_tls
+
+  parts = http.ParsedUri_.parse_ "https://[::]:80/foo#fraggy"
+  expect_equals "https"            parts.scheme
+  expect_equals "::"               parts.host
+  expect_equals 80                 parts.port
+  expect_equals "/foo"             parts.path
+  expect_equals "fraggy"           parts.fragment
+  expect                           parts.use_tls
+
+  expect_throw "URI_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https://[::] :80/foo#fraggy"
+  expect_throw "URI_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https://[::/foo#fraggy"
+  expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https://1234::5678/foo#fraggy"
+  expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https://[www.apple.com]/foo#fraggy"
+  expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https://[www.apple.com]:80/foo#fraggy"
+  expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https:// [::]:80/foo#fraggy"
+  expect_throw "INTEGER_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https:// [::]/foo#fraggy"
