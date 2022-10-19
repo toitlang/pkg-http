@@ -39,6 +39,7 @@ run_client network port/int -> none:
 
     response = client.get --host="localhost" --port=port --path="/unobtainium.jpeg"
     expect_equals 404 response.status_code
+    response.body.read
 
     response = client.get --host="localhost" --port=port --path="/foo.json"
     expect_equals "application/json"

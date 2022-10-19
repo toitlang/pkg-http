@@ -15,6 +15,7 @@ import .headers
 class Connection:
   socket_/tcp.Socket? := null
   host_/string?
+  location_ := null
   // Internal reader and writer that are used for the socket.
   reader_ := ?
   writer_/writer.Writer
@@ -22,8 +23,9 @@ class Connection:
   current_writer_ := null
   current_reader_/reader.Reader? := null
 
-  constructor .socket_ --host/string?=null:
+  constructor .socket_ --location --host/string?=null:
     host_ = host
+    location_ = location
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 
@@ -39,6 +41,15 @@ class Connection:
     current_writer_ = null
     socket_ = null
     reader_ = null
+
+  drain -> none:
+    if current_reader_:
+      while current_reader_.read:
+        //
+    current_reader_ = null
+    if current_writer_:
+      current_writer_.close
+    current_writer_ = null
 
   close_write:
     if socket_:

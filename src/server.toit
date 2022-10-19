@@ -14,7 +14,6 @@ import .chunked
 import .connection
 import .headers
 import .request
-import .response
 import .status_codes
 import .web_socket
 
@@ -57,7 +56,7 @@ class Server:
             --certificate=certificate_
             --root_certificates=root_certificates_
 
-        connection := Connection socket
+        connection := Connection --location=null socket
         detached := false
         try:
           address := socket.peer_address

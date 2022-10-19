@@ -127,7 +127,7 @@ class Client:
       --uri/string
       --headers/Headers=Headers:
     parsed := parse_ uri --web_socket=false
-    new_connection_ parsed
+    ensure_connection_to_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -145,7 +145,7 @@ class Client:
       --headers/Headers=Headers
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    new_connection_ parsed
+    ensure_connection_to_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -173,7 +173,7 @@ class Client:
         --path=path
         --parse_port_in_host=true
     if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
-    new_connection_ parsed
+    ensure_connection_to_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -252,14 +252,13 @@ class Client:
 
   get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
     MAX_REDIRECTS.repeat:
-      new_connection_ parsed
+      ensure_connection_to_ parsed
       request := connection_.new_request GET parsed.path headers
       response := request.send
 
       if follow_redirects and
           (is_regular_redirect_ response.status_code
             or response.status_code == STATUS_SEE_OTHER):
-        connection_.close
         parsed = get_location_ response parsed
         continue.repeat
       else:
@@ -275,7 +274,7 @@ class Client:
   Variant of $(web_socket --host).
 
   Instead of specifying host and path, this variant lets you specify a $uri, of
-    the form "http://www.example.com:1080/path/to/file#fragment".
+    the form "ws://www.example.com:1080/path/to/file#fragment".
 
   A URI that starts with "ws:" (not "wss:") will disable TLS even if the Client
     was created as a TLS client.
@@ -311,7 +310,7 @@ class Client:
 
   web_socket_ parsed/ParsedUri_ headers/Headers follow_redirects/bool -> WebSocket:
     MAX_REDIRECTS.repeat:
-      new_connection_ parsed
+      ensure_connection_to_ parsed
       nonce := WebSocket.add_client_upgrade_headers_ headers
       headers.add "Host" connection_.host_
       request := connection_.new_request GET parsed.path headers
@@ -319,7 +318,6 @@ class Client:
       if follow_redirects and
           (is_regular_redirect_ response.status_code
             or response.status_code == STATUS_SEE_OTHER):
-        connection_.close
         parsed = get_location_ response parsed
         continue.repeat
       else:
@@ -429,17 +427,15 @@ class Client:
       headers.set "Content-Type" content_type
 
     MAX_REDIRECTS.repeat:
-      new_connection_ parsed
+      ensure_connection_to_ parsed
       request := connection_.new_request POST parsed.path headers
       request.body = bytes.Reader data
       response := request.send
 
       if follow_redirects and is_regular_redirect_ response.status_code:
-        connection_.close
         parsed = get_location_ response parsed
         continue.repeat
       else if follow_redirects and response.status_code == STATUS_SEE_OTHER:
-        connection_.close
         parsed = get_location_ response parsed
         headers = headers.copy
         clear_payload_headers_ headers
@@ -607,14 +603,20 @@ class Client:
         result[pos++] = c
     return result
 
-  new_connection_ parsed/ParsedUri_ -> none:
-    socket := interface_.tcp_connect parsed.host parsed.port
-    if parsed.use_tls:
+  ensure_connection_to_ location/ParsedUri_ -> none:
+    if connection_:
+      if location.can_reuse_connection connection_.location_:
+        connection_.drain
+        return
+      connection_.close
+      connection_ = null
+    socket := interface_.tcp_connect location.host location.port
+    if location.use_tls:
       socket = tls.Socket.client socket
-        --server_name=server_name_ or parsed.host
+        --server_name=server_name_ or location.host
         --certificate=certificate_
         --root_certificates=root_certificates_
-    connection_ = Connection socket --host=parsed.host_with_port
+    connection_ = Connection socket --location=location --host=location.host_with_port
 
   /**
   The default port used based on the type of connection.
@@ -645,7 +647,6 @@ class ParsedUri_:
   port/int
   path/string
   fragment/string?
-  use_tls/bool
 
   static SCHEMES_ ::= {
       "https": 443,
@@ -670,7 +671,8 @@ class ParsedUri_:
       this.host = host
       this.port = port ? port : SCHEMES_[scheme]
 
-    use_tls = (SCHEMES_[scheme] == 443)
+  use_tls -> bool:
+    return SCHEMES_[scheme] == 443
 
   stringify -> string: return "$scheme://$host_with_port$path$(fragment ? "#$fragment" : "")"
 
@@ -685,7 +687,11 @@ class ParsedUri_:
     port = parsed.port
     path = parsed.path
     fragment = parsed.fragment or (previous ? previous.fragment : null)
-    use_tls = (SCHEMES_[new_scheme] == 443)
+
+  can_reuse_connection other/ParsedUri_ -> bool:
+    return    host == other.host
+        and   port == other.port
+        and scheme == other.scheme
 
   /// Returns the hostname, with the port appended if it is non-default.
   host_with_port -> string:
