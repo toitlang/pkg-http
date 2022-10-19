@@ -13,39 +13,53 @@ import .chunked
 import .headers
 
 class Connection:
-  socket_/tcp.Socket
+  socket_/tcp.Socket? := null
   host_/string?
+  // Internal reader and writer that are used for the socket.
   reader_ := ?
   writer_/writer.Writer
-  auto_close_/bool
+  // These are writers and readers that have been given to API users.
+  current_writer_ := null
+  current_reader_/reader.Reader? := null
 
-  constructor .socket_ --host/string?=null --auto_close=false:
-    auto_close_ = auto_close
+  constructor .socket_ --host/string?=null:
     host_ = host
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 
   new_request method/string path/string headers/Headers -> Request:
+    if current_reader_ or current_writer_: throw "Previous request not completed"
     return Request.client this method path headers
 
   close:
-    return socket_.close
+    if socket_:
+      socket_.close
+      if current_writer_: current_writer_.close
+    current_reader_ = null
+    current_writer_ = null
+    socket_ = null
+    reader_ = null
+
+  close_write:
+    if socket_:
+      socket_.close_write
 
   send_headers -> BodyWriter
       status/string headers/Headers
       --is_client_request/bool
       --has_body/bool:
+    if current_writer_: throw "Previous request not completed"
     body_writer/BodyWriter := ?
     needs_to_write_chunked_header := false
 
-    if has_body and not headers.matches "Connection" "Upgrade":
+    if has_body:
       content_length := headers.single "Content-Length"
       if content_length:
         length := int.parse content_length
         body_writer = ContentLengthWriter this writer_ length
       else:
         needs_to_write_chunked_header = true
-        body_writer = ChunkedWriter writer_
+        body_writer = ChunkedWriter this writer_
     else:
       // Return a writer that doesn't accept any data.
       body_writer = ContentLengthWriter this writer_ 0
@@ -61,11 +75,15 @@ class Connection:
     writer_.write "\r\n"
 
     socket_.set_no_delay true
+    current_writer_ = body_writer
     return body_writer
 
   // Gets the next request from the client. If the client closes the
   // connection, returns null.
   read_request -> Request?:
+    // In theory HTTP/1.1 can support pipelining, but it causes issues
+    // with many servers, so nobody uses it.
+    if current_reader_: throw "Previous response not yet finished"
     if not reader_.can_ensure 1: return null
     index_of_first_space := reader_.index_of_or_throw ' '
     method := reader_.read_string (index_of_first_space)
@@ -79,6 +97,7 @@ class Connection:
     headers := read_headers_
     reader := body_reader_ headers
 
+    current_reader_ = reader
     return Request.server this reader method path version headers
 
   // Gets the data that has been buffered, but not yet parsed by this connection.
@@ -88,6 +107,7 @@ class Connection:
     return reader_.read_bytes reader_.buffered
 
   read_response -> Response:
+    if current_reader_: throw "Previous response not yet finished"
     version := reader_.read_string (reader_.index_of_or_throw ' ')
     reader_.skip 1
     status_code := int.parse (reader_.read_string (reader_.index_of_or_throw ' '))
@@ -97,15 +117,14 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    body := body_reader_ headers
+    body_reader := body_reader_ headers
 
-    return Response this version status_code status_message headers body
+    current_reader_ = body_reader
+
+    return Response this version status_code status_message headers body_reader
 
   body_reader_ headers/Headers -> reader.Reader:
-    if headers.matches "Connection" "upgrade":
-      // If connection was upgraded, we don't know the encoding. Use a pure
-      // pass-through reader.
-      return reader_
+    assert: not headers.matches "Connection" "upgrade"
 
     content_length := headers.single "Content-Length"
     if content_length:
@@ -151,8 +170,15 @@ class Connection:
 
     return headers
 
-  response_done_:
-    if auto_close_: close
+  reading_done_ reader:
+    if current_reader_:
+      if reader != current_reader_: throw "Read from reader that was already done"
+      current_reader_ = null
+
+  writing_done_ writer:
+    if current_writer_:
+      if writer != current_writer_: throw "Close of a writer that was already done"
+      current_writer_ = null
 
 class ContentLengthReader implements reader.SizedReader:
   connection_/Connection
@@ -168,7 +194,7 @@ class ContentLengthReader implements reader.SizedReader:
 
   read -> ByteArray?:
     if remaining_length_ <= 0:
-      connection_.response_done_
+      connection_.reading_done_ this
       return null
     data := reader_.read --max_size=remaining_length_
     if not data: throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
@@ -180,7 +206,7 @@ interface BodyWriter:
   close
 
 class ContentLengthWriter implements BodyWriter:
-  connection_/Connection
+  connection_/Connection? := null
   writer_/writer.Writer
   remaining_length_/int := ?
 
@@ -191,8 +217,13 @@ class ContentLengthWriter implements BodyWriter:
     remaining_length_ -= data.size
 
   close:
-    if remaining_length_ != 0:
-      connection_.socket_.close_write
+    if connection_:
+      if remaining_length_ != 0:
+        // The connection is ruined if we close before we finished writing the
+        // current thing.
+        connection_.close_write
+      connection_.writing_done_ this
+    connection_ = null
 
 class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket

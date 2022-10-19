@@ -13,10 +13,9 @@ import .connection
 // returns ByteArrays.  End of stream is indicated with a null return value
 // from read.
 class ChunkedReader implements reader.Reader:
-  connection_/Connection
+  connection_/Connection? := null
   reader_/reader.BufferedReader? := ?
   left_in_chunk_ := 0 // How much more raw data we are waiting for before the next size line.
-  done_ := false
 
   constructor .connection_ .reader_:
 
@@ -32,8 +31,7 @@ class ChunkedReader implements reader.Reader:
 
   read -> ByteArray?:
     while true:
-      if done_:
-        connection_.response_done_
+      if not connection_:
         return null
       if left_in_chunk_ > 0:
         result := reader_.read --max_size=left_in_chunk_
@@ -53,7 +51,8 @@ class ChunkedReader implements reader.Reader:
       if left_in_chunk_ == 0:
         expect_ '\r'
         expect_ '\n'
-        done_ = true
+        connection_.reading_done_ this
+        connection_ = null
 
   expect_ byte/int:
     b := reader_.byte 0
@@ -63,9 +62,10 @@ class ChunkedReader implements reader.Reader:
 class ChunkedWriter implements BodyWriter:
   static CRLF_ ::= "\r\n"
 
+  connection_/Connection? := null
   writer_/writer.Writer
 
-  constructor .writer_:
+  constructor .connection_ .writer_:
 
   write data -> int:
     if data.size == 0: return 0
@@ -78,13 +78,16 @@ class ChunkedWriter implements BodyWriter:
     return data.size
 
   close:
-    // Once we've sent the last chunk, the remaining transmitted information
-    // is redundant, so we don't want to throw exceptions if the other side
-    // closes the connection at this point.
-    catch:
-      writer_.write "0"
-      writer_.write CRLF_
-      writer_.write CRLF_
+    if connection_:
+      // Once we've sent the last chunk, the remaining transmitted information
+      // is redundant, so we don't want to throw exceptions if the other side
+      // closes the connection at this point.
+      catch:
+        writer_.write "0"
+        writer_.write CRLF_
+        writer_.write CRLF_
+      connection_.writing_done_ this
+    connection_ = null
 
   write_header_ length/int:
     writer_.write
