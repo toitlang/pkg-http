@@ -772,7 +772,6 @@ class ParsedUri_:
       if colon > 0:
         port = int.parse host[colon + 1..]
         host = host[..colon]
-    if host.size == 0 or host[0] == '.': throw "URI_PARSING_ERROR"
     previous := '.'
     if ipv6:
       host.do:
@@ -782,6 +781,7 @@ class ParsedUri_:
             and not it == ':':
           throw "ILLEGAL_HOSTNAME"
     else:
+      if host.size == 0 or host[0] == '.': throw "URI_PARSING_ERROR"
       host.do:
         if it == '-':
           if previous == '.': throw "URI_PARSING_ERROR"
