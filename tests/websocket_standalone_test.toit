@@ -41,12 +41,16 @@ TEST_PACKETS := [
     "€€£" * 40,
 ]
 
+sent_but_not_reflected := 0
+
 client_sending web_socket -> none:
   TEST_PACKETS.do: | packet |
     2.repeat:
       // Send with a single call to `send`.
+      sent_but_not_reflected++
       web_socket.send packet
       // Send with a writer.
+      sent_but_not_reflected++
       writer := web_socket.start_sending
       pos := 0
       while pos < packet.size:
@@ -83,7 +87,10 @@ start_server network -> int:
         web_socket := server.web_socket request response_writer
         // The server end of the web socket just echoes back what it gets.
         while data := web_socket.receive:
+          sent_but_not_reflected--
           web_socket.send data
+        sleep --ms=10  // Give the client some time to count up before we check the result.
+        expect_equals 0 sent_but_not_reflected
       else:
         response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
   return port
