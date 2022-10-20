@@ -127,7 +127,7 @@ class Client:
       --uri/string
       --headers/Headers=Headers:
     parsed := parse_ uri --web_socket=false
-    ensure_connection_to_ parsed
+    ensure_connection_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -145,7 +145,7 @@ class Client:
       --headers/Headers=Headers
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    ensure_connection_to_ parsed
+    ensure_connection_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -173,7 +173,7 @@ class Client:
         --path=path
         --parse_port_in_host=true
     if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
-    ensure_connection_to_ parsed
+    ensure_connection_ parsed
     request := connection_.new_request method parsed.path headers
     return request
 
@@ -252,9 +252,10 @@ class Client:
 
   get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
     MAX_REDIRECTS.repeat:
-      ensure_connection_to_ parsed
-      request := connection_.new_request GET parsed.path headers
-      response := request.send
+      response/Response? := null
+      try_to_reuse_ parsed:
+        request := connection_.new_request GET parsed.path headers
+        response = request.send
 
       if follow_redirects and
           (is_regular_redirect_ response.status_code
@@ -310,11 +311,12 @@ class Client:
 
   web_socket_ parsed/ParsedUri_ headers/Headers follow_redirects/bool -> WebSocket:
     MAX_REDIRECTS.repeat:
-      ensure_connection_to_ parsed
       nonce := WebSocket.add_client_upgrade_headers_ headers
-      headers.add "Host" connection_.host_
-      request := connection_.new_request GET parsed.path headers
-      response := request.send
+      headers.add "Host" parsed.host_with_port
+      response/Response? := null
+      try_to_reuse_ parsed:
+        request := connection_.new_request GET parsed.path headers
+        response = request.send
       if follow_redirects and
           (is_regular_redirect_ response.status_code
             or response.status_code == STATUS_SEE_OTHER):
@@ -427,10 +429,11 @@ class Client:
       headers.set "Content-Type" content_type
 
     MAX_REDIRECTS.repeat:
-      ensure_connection_to_ parsed
-      request := connection_.new_request POST parsed.path headers
-      request.body = bytes.Reader data
-      response := request.send
+      response := null
+      try_to_reuse_ parsed:
+        request := connection_.new_request POST parsed.path headers
+        request.body = bytes.Reader data
+        response = request.send
 
       if follow_redirects and is_regular_redirect_ response.status_code:
         parsed = get_location_ response parsed
@@ -603,11 +606,29 @@ class Client:
         result[pos++] = c
     return result
 
-  ensure_connection_to_ location/ParsedUri_ -> none:
+  try_to_reuse_ location/ParsedUri_ [block]:
+    // We try to reuse an existing connection to a server, but a web server can
+    // lose interest in a long-running connection at any time and close it, so
+    // if it fails we need to reconnect.
+    reused := ensure_connection_ location
+    error := catch: block.call
+    if not error: return
+    if not reused or error != reader.UNEXPECTED_END_OF_READER_EXCEPTION:
+      throw error
+    connection_.close
+    connection_ = null
+    // Try a second time with a fresh connection.  Since we just closed it,
+    // this will create a new one.
+    ensure_connection_ location
+    block.call
+
+  /// Returns true if the connection was reused.
+  ensure_connection_ location/ParsedUri_ -> bool:
     if connection_:
       if location.can_reuse_connection connection_.location_:
-        connection_.drain
-        return
+        connection_.drain  // Remove any remnants of previous requests.
+        return true
+      // Hostname etc. didn't match so we need a new connection.
       connection_.close
       connection_ = null
     socket := interface_.tcp_connect location.host location.port
@@ -617,6 +638,7 @@ class Client:
         --certificate=certificate_
         --root_certificates=root_certificates_
     connection_ = Connection socket --location=location --host=location.host_with_port
+    return false
 
   /**
   The default port used based on the type of connection.

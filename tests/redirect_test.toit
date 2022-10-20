@@ -15,9 +15,6 @@ PATH_POST     ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fpost&status_co
 PATH_POST_TLS ::= "/redirect-to?url=https%3A%2F%2Fhttpbin.org%2F%2Fpost&status_code=302"
 PATH_POST303  ::= "/redirect-to?url=http%3A%2F%2Fhttpbin.org%2F%2Fget&status_code=303"
 
-drain response/http.Response:
-  while response.body.read: null
-
 check_get_response response/http.Response --scheme:
   data := #[]
   while chunk := response.body.read:
@@ -34,7 +31,6 @@ test_get network/net.Interface:
 
   response = client.get HOST PATH_GET --no-follow_redirects
   expect_equals 302 response.status_code
-  drain response
 
 test_post network/net.Interface:
   client := http.Client network --root_certificates=[certificate_roots.STARFIELD_CLASS_2_CA]
@@ -59,7 +55,6 @@ test_post network/net.Interface:
   // Test that we see the redirect if we ask not to follow redirects.
   response = client.post --host=HOST --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 302 response.status_code
-  drain response
 
   response = client.post_json --host=HOST --path=PATH_POST "hello"
   data = #[]
@@ -71,7 +66,6 @@ test_post network/net.Interface:
 
   response = client.post_json --host=HOST --path=PATH_POST "hello" --no-follow_redirects
   expect_equals 302 response.status_code
-  drain response
 
   response = client.post_form --host=HOST --path=PATH_POST { "toit": "hello" }
   data = #[]
@@ -83,7 +77,6 @@ test_post network/net.Interface:
 
   response = client.post_form --host=HOST --path=PATH_POST { "toit": "hello" } --no-follow_redirects
   expect_equals 302 response.status_code
-  drain response
 
   // A post to a redirect 303 should become a GET.
   response = client.post --host=HOST --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o']
@@ -96,8 +89,6 @@ test_post network/net.Interface:
 
   response = client.post --host=HOST --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 303 response.status_code
-  drain response
-
 
 main:
   network := net.open

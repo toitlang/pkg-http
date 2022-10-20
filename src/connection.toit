@@ -36,7 +36,8 @@ class Connection:
   close:
     if socket_:
       socket_.close
-      if current_writer_: current_writer_.close
+      if current_writer_:
+        current_writer_.close
     current_reader_ = null
     current_writer_ = null
     socket_ = null
@@ -44,7 +45,7 @@ class Connection:
 
   drain -> none:
     if current_reader_:
-      while current_reader_.read:
+      while data := current_reader_.read:
         //
     current_reader_ = null
     if current_writer_:
@@ -270,8 +271,10 @@ class DetachedSocket_ implements tcp.Socket:
     return reader_.read
 
   write data from=0 to=data.size: return socket_.write data from to
-  close_write: return socket_.close_write
-  close: return socket_.close
+  close_write:
+    return socket_.close_write
+  close:
+    return socket_.close
   local_address -> net.SocketAddress: return socket_.local_address
   peer_address -> net.SocketAddress: return socket_.peer_address
   mtu -> int: return socket_.mtu
