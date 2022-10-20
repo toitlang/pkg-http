@@ -271,10 +271,8 @@ class DetachedSocket_ implements tcp.Socket:
     return reader_.read
 
   write data from=0 to=data.size: return socket_.write data from to
-  close_write:
-    return socket_.close_write
-  close:
-    return socket_.close
+  close_write: return socket_.close_write
+  close: return socket_.close
   local_address -> net.SocketAddress: return socket_.local_address
   peer_address -> net.SocketAddress: return socket_.peer_address
   mtu -> int: return socket_.mtu
