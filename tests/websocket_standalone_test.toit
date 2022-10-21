@@ -85,7 +85,8 @@ start_server network -> int:
     server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
       if request.path == "/":
         web_socket := server.web_socket request response_writer
-        // The server end of the web socket just echoes back what it gets.
+        // For this test, the server end of the web socket just echoes back
+        // what it gets.
         while data := web_socket.receive:
           sent_but_not_reflected--
           web_socket.send data

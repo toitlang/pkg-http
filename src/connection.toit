@@ -107,16 +107,16 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    reader := body_reader_ headers
+    body_reader := body_reader_ headers --request=true
 
-    current_reader_ = reader
-    return Request.server this reader method path version headers
+    current_reader_ = body_reader
+    return Request.server this body_reader method path version headers
 
-  // Gets the data that has been buffered, but not yet parsed by this connection.
-  // Never calls read on the underlying socket.
-  // May return a zero length byte array if no data has been buffered.
-  read_buffered_ -> ByteArray?:
-    return reader_.read_bytes reader_.buffered
+  detach -> DetachedSocket_:
+    socket := socket_
+    socket_ = null
+    buffered := reader_.read_bytes reader_.buffered
+    return DetachedSocket_ socket buffered
 
   read_response -> Response:
     if current_reader_: throw "Previous response not yet finished"
@@ -129,13 +129,14 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    body_reader := body_reader_ headers
+    body_reader := body_reader_ headers --request=false
 
     current_reader_ = body_reader
 
     return Response this version status_code status_message headers body_reader
 
-  body_reader_ headers/Headers -> reader.Reader:
+  body_reader_ headers/Headers --request/bool -> reader.Reader:
+    // This method should not be used on WebSocket upgrades.
     assert: not headers.matches "Connection" "upgrade"
 
     content_length := headers.single "Content-Length"
@@ -145,14 +146,26 @@ class Connection:
 
     // The only transfer encodings we support are 'identity' and 'chunked',
     // which are both required by HTTP/1.1.
-    TE := "Transfer-Encoding"
-    if headers.single TE:
-      if headers.starts_with TE "chunked":
+    T_E ::= "Transfer-Encoding"
+    if headers.single T_E:
+      if headers.matches T_E "chunked":
         return ChunkedReader this reader_
-      else if not headers.matches TE "identity":
-        throw "No support for $TE: $(headers.single TE)"
+      else if not headers.matches T_E "identity":
+        throw "No support for $T_E: $(headers.single T_E)"
 
-    return ContentLengthReader this reader_ 0
+    if request:
+      // For requests (we are the server) a missing Content-Length means a zero
+      // length body.
+      return ContentLengthReader this reader_ 0
+
+    // If there is no Content-Length field (and we are not using chunked
+    // transfer-encoding) we just don't know the size of the transfer.
+    // The server will indicate the end by closing.  TODO: Distinguish
+    // between FIN closes and RST closes so we can know whether the
+    // transfer succeeded.  Incidentally this also means the connection
+    // can't be reused, but that should happen automatically because it
+    // is closed.
+    return UnknownContentLengthReader this reader_
 
   // Optional whitespace is spaces and tabs.
   is_whitespace_ char:
@@ -213,6 +226,17 @@ class ContentLengthReader implements reader.SizedReader:
     remaining_length_ -= data.size
     return data
 
+class UnknownContentLengthReader implements reader.Reader:
+  connection_/Connection
+  reader_/reader.BufferedReader
+
+  constructor .connection_ .reader_:
+
+  read -> ByteArray?:
+    data := reader_.read
+    if not data: return null
+    return data
+
 interface BodyWriter:
   write data
   close
@@ -237,9 +261,13 @@ class ContentLengthWriter implements BodyWriter:
       connection_.writing_done_ this
     connection_ = null
 
+/**
+A TcpSocket doesn't support ungetting data that was already read for it, so we
+  have this shim that will first return the data that was read before switching
+  protocols.  Other functions are just passed through.
+*/
 class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket
-  reader_/reader.Reader?
   buffered_/ByteArray? := null
 
   // TODO(kasper): For now, it is necessary to keep track
@@ -248,7 +276,7 @@ class DetachedSocket_ implements tcp.Socket:
   // underlying tcp.Socket support the $no_delay getter.
   no_delay_/bool? := null
 
-  constructor .socket_ .reader_ buffered_:
+  constructor .socket_ buffered_:
 
   // TODO(kasper): Remove this. Here for backwards compatibility.
   set_no_delay enabled/bool: socket_.set_no_delay enabled
@@ -268,7 +296,7 @@ class DetachedSocket_ implements tcp.Socket:
       buffered_ = null
       if result.size > 0:
         return result
-    return reader_.read
+    return socket_.read
 
   write data from=0 to=data.size: return socket_.write data from to
   close_write: return socket_.close_write

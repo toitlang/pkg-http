@@ -296,8 +296,6 @@ class Client:
 
   The $use_tls argument can be used to override the default TLS usage of the
     client.
-
-  After this call, this client can no longer be used for regular HTTP requests.
   */
   web_socket -> WebSocket
       --host/string
@@ -324,7 +322,9 @@ class Client:
         continue.repeat
       else:
         WebSocket.check_client_upgrade_response_ response nonce
-        return WebSocket connection_.socket_
+        connection := connection_
+        connection_ = null  // Can't reuse it any more.
+        return WebSocket connection.detach
 
     throw "TOO_MANY_REDIRECTS"
 
@@ -710,10 +710,16 @@ class ParsedUri_:
     path = parsed.path
     fragment = parsed.fragment or (previous ? previous.fragment : null)
 
-  can_reuse_connection other/ParsedUri_ -> bool:
-    return    host == other.host
-        and   port == other.port
-        and scheme == other.scheme
+  can_reuse_connection previous/ParsedUri_ -> bool:
+    // The wording of https://www.rfc-editor.org/rfc/rfc6455#section-4.1 seems
+    // to indicate that WebSockets connections should be fresh HTTP
+    // connections, not ones that have previously been used for plain HTTP.
+    // Therefore we require an exact scheme match here, rather than allowing an
+    // upgrade from http to ws or https to wss.  This matches what browsers do.
+    scheme_is_compatible := scheme == previous.scheme
+    return  host == previous.host
+        and port == previous.port
+        and scheme_is_compatible
 
   /// Returns the hostname, with the port appended if it is non-default.
   host_with_port -> string:
