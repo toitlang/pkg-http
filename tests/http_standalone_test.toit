@@ -7,9 +7,7 @@ import expect show *
 import http
 import net
 
-// Sets up a web server that can switch to websocket mode on the "/" path.
-// The server just sends back everything it gets.
-// Sets up a client that sends files and expects to receive them back.
+// Sets up a web server on localhost and connects to it.
 
 main:
   network := net.open
@@ -19,9 +17,16 @@ main:
 run_client network port/int -> none:
   client := http.Client network
 
-  3.repeat:
+  connection := null
+
+  2.repeat:
 
     response := client.get --host="localhost" --port=port --path="/"
+
+    if connection:
+      expect_equals connection client.connection_  // Check we reused the connection.
+    else:
+      connection = client.connection_
 
     page := ""
     while data := response.body.read:
@@ -29,6 +34,7 @@ run_client network port/int -> none:
     expect_equals INDEX_HTML.size page.size
 
     response = client.get --host="localhost" --port=port --path="/cat.png"
+    expect_equals connection client.connection_  // Check we reused the connection.
     expect_equals "image/png"
         response.headers.single "Content-Type"
     size := 0
@@ -38,35 +44,80 @@ run_client network port/int -> none:
     expect_equals CAT.size size
 
     response = client.get --host="localhost" --port=port --path="/unobtainium.jpeg"
+    expect_equals connection client.connection_  // Check we reused the connection.
     expect_equals 404 response.status_code
 
     response = client.get --host="localhost" --port=port --path="/foo.json"
+    expect_equals connection client.connection_  // Check we reused the connection.
+
     expect_equals "application/json"
         response.headers.single "Content-Type"
-
+    crock := #[]
     while data := response.body.read:
-      //
+      crock += data
+    json.decode crock
+
+  response := client.get --uri="http://localhost:$port/redirect_back"
+  expect connection != client.connection_  // Because of the redirect we had to make a new connection.
+  expect_equals "application/json"
+      response.headers.single "Content-Type"
+  crock := #[]
+  while data := response.body.read:
+    crock += data
+  json.decode crock
 
 start_server network -> int:
-  server_socket := network.tcp_listen 0
-  port := server_socket.local_address.port
-  server := http.Server
+  server_socket1 := network.tcp_listen 0
+  port1 := server_socket1.local_address.port
+  server1 := http.Server
+  server_socket2 := network.tcp_listen 0
+  port2 := server_socket2.local_address.port
+  server2 := http.Server
   task --background::
-    server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
-      if request.path == "/":
-        response_writer.headers.set "Content-Type" "text/html"
-        response_writer.write INDEX_HTML
-      else if request.path == "/foo.json":
-        response_writer.headers.set "Content-Type" "application/json"
-        response_writer.write
-          json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
-      else if request.path == "/cat.png":
-        response_writer.headers.set "Content-Type" "image/png"
-        response_writer.write CAT
-      else:
-        response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
-  print "\nListening on http://localhost:$port/\n"
-  return port
+    listen server1 server_socket1 port1 port2
+    listen server2 server_socket2 port2 port1
+  print "\nListening on http://localhost:$port1/\n"
+  return port1
+
+
+listen server server_socket my_port other_port:
+  server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
+    if request.path == "/":
+      response_writer.headers.set "Content-Type" "text/html"
+      response_writer.write INDEX_HTML
+    else if request.path == "/foo.json":
+      response_writer.headers.set "Content-Type" "application/json"
+      response_writer.write
+        json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
+    else if request.path == "/cat.png":
+      response_writer.headers.set "Content-Type" "image/png"
+      response_writer.write CAT
+    else if request.path == "/endpoint":
+      web_socket := server.web_socket request response_writer
+      task:: handle_web_socket_server_side web_socket
+    else if request.path == "/redirect_from":
+      response_writer.headers.set "Location" "http://localhost:$other_port/redirect_back"
+      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+    else if request.path == "/redirect_back":
+      response_writer.headers.set "Location" "http://localhost:$other_port/foo.json"
+      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+    else if request.path == "/redirect_loop":
+      response_writer.headers.set "Location" "http://localhost:$other_port/redirect_loop"
+      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+    else:
+      response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
+
+handle_web_socket_server_side web_socket -> none:
+  web_socket.send "I'm the server"
+  expect_equals "I'm the client"
+      web_socket.receive
+  web_socket.close
+
+handle_web_socket_client_side web_socket -> none:
+  web_socket.send "I'm the client"
+  expect_equals "I'm the server"
+      web_socket.receive
+  web_socket.close
 
 INDEX_HTML ::= """
     <html>

@@ -115,14 +115,14 @@ class ResponseWriter_ implements ResponseWriter:
 
   write_headers status_code/int --message/string?=null:
     if body_writer_: throw "headers already written"
-    write_headers_ status_code message true
+    write_headers_ status_code --message=message --has_body=true
 
   write data:
     if data.size > 0: has_data_ = true
-    write_headers_ STATUS_OK null true
+    write_headers_ STATUS_OK --message=null --has_body=true
     body_writer_.write data
 
-  write_headers_ status_code/int message/string? has_body/bool:
+  write_headers_ status_code/int --message/string? --has_body/bool:
     if body_writer_: return
     body_writer_ = connection_.send_headers
         "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
@@ -130,8 +130,21 @@ class ResponseWriter_ implements ResponseWriter:
         --is_client_request=false
         --has_body=has_body
 
+  redirect status_code/int location/string --message/string?=null --body/string?=null -> none:
+    headers.set "Location" location
+    if body and body.size > 0:
+      write_headers_ status_code --message=message --has_body=true
+      body_writer_.write body
+    else:
+      write_headers_ status_code --message=message --has_body=false
+    close
+
   close:
-    write_headers_ STATUS_OK null has_data_
+    if has_data_ or body_writer_:
+      write_headers_ STATUS_OK --message=null --has_body=has_data_
+    else:
+      write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=null --has_body=false
+      logger_.info "Closed connection without any data"
     body_writer_.close
 
   detach -> tcp.Socket:
