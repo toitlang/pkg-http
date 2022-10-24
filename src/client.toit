@@ -611,7 +611,7 @@ class Client:
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
     reused := ensure_connection_ location
-    catch --unwind=(: not reused or it != reader.UNEXPECTED_END_OF_READER_EXCEPTION):
+    catch --unwind=(: not reused or it != reader.UNEXPECTED_END_OF_READER_EXCEPTION and it != "Broken pipe"):
       block.call connection_
       return
     // We tried to reuse an already-open connection, but the server closed it.

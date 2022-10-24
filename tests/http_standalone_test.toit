@@ -66,6 +66,23 @@ run_client network port/int -> none:
     crock += data
   json.decode crock
 
+  expect_throw "Too many redirects": client.get --uri="http://localhost:$port/redirect_loop"
+
+  response = client.get --uri="http://localhost:$port/cause_500"
+  expect_equals 500 response.status_code
+
+  response = client.get --uri="http://localhost:$port/throw"
+  expect_equals 500 response.status_code
+
+  response = client.get --uri="http://localhost:$port/redirect_from"
+  expect connection != client.connection_  // Because of two redirects we had to make two new connections.
+  expect_equals "application/json"
+      response.headers.single "Content-Type"
+  crock = #[]
+  while data := response.body.read:
+    crock += data
+  json.decode crock
+
 start_server network -> int:
   server_socket1 := network.tcp_listen 0
   port1 := server_socket1.local_address.port
@@ -75,8 +92,12 @@ start_server network -> int:
   server2 := http.Server
   task --background::
     listen server1 server_socket1 port1 port2
+  task --background::
     listen server2 server_socket2 port2 port1
-  print "\nListening on http://localhost:$port1/\n"
+  print ""
+  print "Listening on http://localhost:$port1/"
+  print "Listening on http://localhost:$port2/"
+  print ""
   return port1
 
 
@@ -92,32 +113,18 @@ listen server server_socket my_port other_port:
     else if request.path == "/cat.png":
       response_writer.headers.set "Content-Type" "image/png"
       response_writer.write CAT
-    else if request.path == "/endpoint":
-      web_socket := server.web_socket request response_writer
-      task:: handle_web_socket_server_side web_socket
     else if request.path == "/redirect_from":
-      response_writer.headers.set "Location" "http://localhost:$other_port/redirect_back"
-      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+      response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_back"
     else if request.path == "/redirect_back":
-      response_writer.headers.set "Location" "http://localhost:$other_port/foo.json"
-      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+      response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/foo.json"
     else if request.path == "/redirect_loop":
-      response_writer.headers.set "Location" "http://localhost:$other_port/redirect_loop"
-      response_writer.write_headers http.STATUS_MOVED_PERMANENTLY
+      response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_loop"
+    else if request.path == "/cause_500":
+      // Forget to write anything - the server should send 500 - Internal error.
+    else if request.path == "/throw":
+      throw "** Expect a stack trace here caused by testing\n** that we send 500 when server throws"
     else:
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
-
-handle_web_socket_server_side web_socket -> none:
-  web_socket.send "I'm the server"
-  expect_equals "I'm the client"
-      web_socket.receive
-  web_socket.close
-
-handle_web_socket_client_side web_socket -> none:
-  web_socket.send "I'm the client"
-  expect_equals "I'm the server"
-      web_socket.receive
-  web_socket.close
 
 INDEX_HTML ::= """
     <html>

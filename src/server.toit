@@ -62,13 +62,13 @@ class Server:
           address := socket.peer_address
           logger := logger_.with_tag "peer" address
           logger.debug "client connected"
-          e := catch:
+          e := catch --trace:
             detached = run_connection_ connection handler logger
           close_logger := e ? logger.with_tag "reason" e : logger
           if detached:
             close_logger.debug "client socket detached"
           else:
-            close_logger.debug "client disconnected"
+            close_logger.debug "connection ended"
         finally:
           if not detached: socket.close
 
@@ -88,12 +88,14 @@ class Server:
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
       writer ::= ResponseWriter_ connection request request_logger
-      catch --trace=(: it != DEADLINE_EXCEEDED_ERROR):
-        handler.call request writer
-      // Drain unread content to allow the connection to be reused.
-      if writer.detached_: return true
-      request.drain
-      writer.close
+      try:
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR) --trace=(: it != DEADLINE_EXCEEDED_ERROR):
+          handler.call request writer
+      finally:
+        // Drain unread content to allow the connection to be reused.
+        if writer.detached_: return true
+        request.drain
+        writer.close
 
 class ResponseWriter_ implements ResponseWriter:
   static VERSION ::= "HTTP/1.1"
@@ -137,14 +139,13 @@ class ResponseWriter_ implements ResponseWriter:
       body_writer_.write body
     else:
       write_headers_ status_code --message=message --has_body=false
-    close
 
   close:
     if has_data_ or body_writer_:
       write_headers_ STATUS_OK --message=null --has_body=has_data_
     else:
       write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=null --has_body=false
-      logger_.info "Closed connection without any data"
+      logger_.info "Returned from router without any data for the client"
     body_writer_.close
 
   detach -> tcp.Socket:
@@ -158,3 +159,4 @@ interface ResponseWriter:
   write_headers status_code/int --message/string?=null
   write data
   detach -> tcp.Socket
+  redirect status_code/int location/string --message/string?=null --body/string?=null -> none
