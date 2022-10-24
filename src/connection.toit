@@ -46,7 +46,7 @@ class Connection:
   drain -> none:
     if current_reader_:
       while data := current_reader_.read:
-        //
+        null  // Do nothing with the data.
     current_reader_ = null
     if current_writer_:
       current_writer_.close
@@ -262,7 +262,7 @@ class ContentLengthWriter implements BodyWriter:
     connection_ = null
 
 /**
-A TcpSocket doesn't support ungetting data that was already read for it, so we
+A $tcp.Socket doesn't support ungetting data that was already read for it, so we
   have this shim that will first return the data that was read before switching
   protocols.  Other functions are just passed through.
 */
