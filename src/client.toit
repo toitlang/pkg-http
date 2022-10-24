@@ -253,8 +253,8 @@ class Client:
   get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
     MAX_REDIRECTS.repeat:
       response/Response? := null
-      try_to_reuse_ parsed:
-        request := connection_.new_request GET parsed.path headers
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request GET parsed.path headers
         response = request.send
 
       if follow_redirects and
@@ -312,8 +312,8 @@ class Client:
       nonce := WebSocket.add_client_upgrade_headers_ headers
       headers.add "Host" parsed.host_with_port
       response/Response? := null
-      try_to_reuse_ parsed:
-        request := connection_.new_request GET parsed.path headers
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request GET parsed.path headers
         response = request.send
       if follow_redirects and
           (is_regular_redirect_ response.status_code
@@ -430,8 +430,8 @@ class Client:
 
     MAX_REDIRECTS.repeat:
       response := null
-      try_to_reuse_ parsed:
-        request := connection_.new_request POST parsed.path headers
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request POST parsed.path headers
         request.body = bytes.Reader data
         response = request.send
 
@@ -611,16 +611,16 @@ class Client:
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
     reused := ensure_connection_ location
-    error := catch: block.call
-    if not error: return
-    if not reused or error != reader.UNEXPECTED_END_OF_READER_EXCEPTION:
-      throw error
+    catch --unwind=(: not reused or it != reader.UNEXPECTED_END_OF_READER_EXCEPTION):
+      block.call connection_
+      return
+    // We tried to reuse an already-open connection, but the server closed it.
     connection_.close
     connection_ = null
     // Try a second time with a fresh connection.  Since we just closed it,
     // this will create a new one.
     ensure_connection_ location
-    block.call
+    block.call connection_
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
