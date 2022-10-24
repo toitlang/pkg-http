@@ -25,4 +25,4 @@ class Response:
 
   // Return a reader & writer object, used to send raw data on the connection.
   detach -> tcp.Socket:
-    return DetachedSocket_ connection_.socket_ body connection_.read_buffered_
+    return connection_.detach

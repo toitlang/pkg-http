@@ -14,7 +14,6 @@ import .chunked
 import .connection
 import .headers
 import .request
-import .response
 import .status_codes
 import .web_socket
 
@@ -57,7 +56,7 @@ class Server:
             --certificate=certificate_
             --root_certificates=root_certificates_
 
-        connection := Connection socket
+        connection := Connection --location=null socket
         detached := false
         try:
           address := socket.peer_address
@@ -77,7 +76,7 @@ class Server:
     rw := response_writer as ResponseWriter_
     nonce := WebSocket.check_server_upgrade_request_ request rw
     if nonce == null: return null
-    response_writer.write_headers STATUS_SWITCHING_PROTOCOLS --message="OK"
+    response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
     return WebSocket rw.detach
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
@@ -99,7 +98,7 @@ class Server:
 class ResponseWriter_ implements ResponseWriter:
   static VERSION ::= "HTTP/1.1"
 
-  connection_/Connection
+  connection_/Connection? := null
   request_/Request
   logger_/log.Logger
   headers_/Headers
@@ -137,7 +136,9 @@ class ResponseWriter_ implements ResponseWriter:
 
   detach -> tcp.Socket:
     detached_ = true
-    return DetachedSocket_ connection_.socket_ request_.body connection_.read_buffered_
+    connection := connection_
+    connection_ = null
+    return connection.detach
 
 interface ResponseWriter:
   headers -> Headers

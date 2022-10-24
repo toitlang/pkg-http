@@ -26,8 +26,7 @@ This class provides methods to fetch data from HTTP servers.
 Use the $get method to fetch data using a $GET request.
 
 The $get method keeps track of the underlying resources and is thus
-  very easy to use. Once the data is fully read it automatically
-  closes the connection.
+  very easy to use.
 
 Example that takes the incoming data and reads it as JSON:
 ```
@@ -75,6 +74,7 @@ class Client:
   certificate_/tls.Certificate? ::= null
   server_name_/string? ::= null
   root_certificates_/List ::= []
+  connection_/Connection? := null
 
   /**
   Constructs a new client instance over the given interface.
@@ -127,8 +127,8 @@ class Client:
       --uri/string
       --headers/Headers=Headers:
     parsed := parse_ uri --web_socket=false
-    connection := new_connection_ parsed --auto_close
-    request := connection.new_request method parsed.path headers
+    ensure_connection_ parsed
+    request := connection_.new_request method parsed.path headers
     return request
 
   /**
@@ -137,9 +137,6 @@ class Client:
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
   The returned $Request should be sent with $Request.send.
-
-  The connection is automatically closed when the response's body ($Response.body) is
-    completely read.
   */
   new_request method/string -> Request
       --host/string
@@ -148,8 +145,8 @@ class Client:
       --headers/Headers=Headers
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    connection := new_connection_ parsed --auto_close
-    request := connection.new_request method parsed.path headers
+    ensure_connection_ parsed
+    request := connection_.new_request method parsed.path headers
     return request
 
   /**
@@ -161,9 +158,6 @@ class Client:
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
   The returned $Request should be sent with $Request.send.
-
-  The connection is automatically closed when the response's body ($Response.body) is
-    completely read.
 
   A port can be provided in two ways:
   - using the $port parameter, or
@@ -179,8 +173,8 @@ class Client:
         --path=path
         --parse_port_in_host=true
     if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
-    connection := new_connection_ parsed --auto_close
-    request := connection.new_request method parsed.path headers
+    ensure_connection_ parsed
+    request := connection_.new_request method parsed.path headers
     return request
 
   static starts_with_ignore_case_ str/string needle/string -> bool:
@@ -212,8 +206,6 @@ class Client:
   /**
   Fetches data for $path on the given server ($host, $port) with a GET request.
 
-  The connection is automatically closed when the response is completely read.
-
   If no port is specified then the default port is used.  The $host is not
     parsed for a port number (but see $(get --uri)).
 
@@ -238,8 +230,6 @@ class Client:
   This method will not be in the next major version of the library -
     instead use the version with the named host and path arguments.
 
-  The connection is automatically closed when the response is completely read.
-
   A port can be provided in two ways:
   - using the $port parameter, or
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
@@ -262,14 +252,14 @@ class Client:
 
   get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
     MAX_REDIRECTS.repeat:
-      connection := new_connection_ parsed --auto_close
-      request := connection.new_request GET parsed.path headers
-      response := request.send
+      response/Response? := null
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request GET parsed.path headers
+        response = request.send
 
       if follow_redirects and
           (is_regular_redirect_ response.status_code
             or response.status_code == STATUS_SEE_OTHER):
-        connection.close
         parsed = get_location_ response parsed
         continue.repeat
       else:
@@ -285,7 +275,7 @@ class Client:
   Variant of $(web_socket --host).
 
   Instead of specifying host and path, this variant lets you specify a $uri, of
-    the form "http://www.example.com:1080/path/to/file#fragment".
+    the form "ws://www.example.com:1080/path/to/file#fragment".
 
   A URI that starts with "ws:" (not "wss:") will disable TLS even if the Client
     was created as a TLS client.
@@ -306,8 +296,6 @@ class Client:
 
   The $use_tls argument can be used to override the default TLS usage of the
     client.
-
-  After this call, this client can no longer be used for regular HTTP requests.
   */
   web_socket -> WebSocket
       --host/string
@@ -321,20 +309,22 @@ class Client:
 
   web_socket_ parsed/ParsedUri_ headers/Headers follow_redirects/bool -> WebSocket:
     MAX_REDIRECTS.repeat:
-      connection := new_connection_ parsed --auto_close=false
       nonce := WebSocket.add_client_upgrade_headers_ headers
-      headers.add "Host" connection.host_
-      request := connection.new_request GET parsed.path headers
-      response := request.send
+      headers.add "Host" parsed.host_with_port
+      response/Response? := null
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request GET parsed.path headers
+        response = request.send
       if follow_redirects and
           (is_regular_redirect_ response.status_code
             or response.status_code == STATUS_SEE_OTHER):
-        connection.close
         parsed = get_location_ response parsed
         continue.repeat
       else:
         WebSocket.check_client_upgrade_response_ response nonce
-        return WebSocket connection.socket_
+        connection := connection_
+        connection_ = null  // Can't reuse it any more.
+        return WebSocket connection.detach
 
     throw "TOO_MANY_REDIRECTS"
 
@@ -370,8 +360,6 @@ class Client:
 
   /**
   Posts data on $path for the given server ($host, $port) using the $POST method.
-
-  The connection is automatically closed when the response is completely read.
 
   A port can be provided in two ways:
   - using the $port parameter, or
@@ -441,17 +429,16 @@ class Client:
       headers.set "Content-Type" content_type
 
     MAX_REDIRECTS.repeat:
-      connection := new_connection_ parsed --auto_close
-      request := connection.new_request POST parsed.path headers
-      request.body = bytes.Reader data
-      response := request.send
+      response := null
+      try_to_reuse_ parsed: | connection |
+        request := connection.new_request POST parsed.path headers
+        request.body = bytes.Reader data
+        response = request.send
 
       if follow_redirects and is_regular_redirect_ response.status_code:
-        connection.close
         parsed = get_location_ response parsed
         continue.repeat
       else if follow_redirects and response.status_code == STATUS_SEE_OTHER:
-        connection.close
         parsed = get_location_ response parsed
         headers = headers.copy
         clear_payload_headers_ headers
@@ -485,8 +472,6 @@ class Client:
   Encodes the $object first as JSON.
 
   Sets the 'Content-type' header to "application/json".
-
-  The connection is automatically closed when the response is completely read.
 
   A port can be provided in two ways:
   - using the $port parameter, or
@@ -538,8 +523,6 @@ class Client:
     to strings by calling stringify on them.
 
   Sets the 'Content-type' header to "application/x-www-form-urlencoded".
-
-  The connection is automatically closed when the response is completely read.
 
   A port can be provided in two ways:
   - using the $port parameter, or
@@ -623,14 +606,39 @@ class Client:
         result[pos++] = c
     return result
 
-  new_connection_ parsed/ParsedUri_ --auto_close=false -> Connection:
-    socket := interface_.tcp_connect parsed.host parsed.port
-    if parsed.use_tls:
+  try_to_reuse_ location/ParsedUri_ [block]:
+    // We try to reuse an existing connection to a server, but a web server can
+    // lose interest in a long-running connection at any time and close it, so
+    // if it fails we need to reconnect.
+    reused := ensure_connection_ location
+    catch --unwind=(: not reused or it != reader.UNEXPECTED_END_OF_READER_EXCEPTION):
+      block.call connection_
+      return
+    // We tried to reuse an already-open connection, but the server closed it.
+    connection_.close
+    connection_ = null
+    // Try a second time with a fresh connection.  Since we just closed it,
+    // this will create a new one.
+    ensure_connection_ location
+    block.call connection_
+
+  /// Returns true if the connection was reused.
+  ensure_connection_ location/ParsedUri_ -> bool:
+    if connection_:
+      if location.can_reuse_connection connection_.location_:
+        connection_.drain  // Remove any remnants of previous requests.
+        return true
+      // Hostname etc. didn't match so we need a new connection.
+      connection_.close
+      connection_ = null
+    socket := interface_.tcp_connect location.host location.port
+    if location.use_tls:
       socket = tls.Socket.client socket
-        --server_name=server_name_ or parsed.host
+        --server_name=server_name_ or location.host
         --certificate=certificate_
         --root_certificates=root_certificates_
-    return Connection socket --host=parsed.host_with_port --auto_close=auto_close
+    connection_ = Connection socket --location=location --host=location.host_with_port
+    return false
 
   /**
   The default port used based on the type of connection.
@@ -661,7 +669,6 @@ class ParsedUri_:
   port/int
   path/string
   fragment/string?
-  use_tls/bool
 
   static SCHEMES_ ::= {
       "https": 443,
@@ -686,7 +693,8 @@ class ParsedUri_:
       this.host = host
       this.port = port ? port : SCHEMES_[scheme]
 
-    use_tls = (SCHEMES_[scheme] == 443)
+  use_tls -> bool:
+    return SCHEMES_[scheme] == 443
 
   stringify -> string: return "$scheme://$host_with_port$path$(fragment ? "#$fragment" : "")"
 
@@ -701,7 +709,17 @@ class ParsedUri_:
     port = parsed.port
     path = parsed.path
     fragment = parsed.fragment or (previous ? previous.fragment : null)
-    use_tls = (SCHEMES_[new_scheme] == 443)
+
+  can_reuse_connection previous/ParsedUri_ -> bool:
+    // The wording of https://www.rfc-editor.org/rfc/rfc6455#section-4.1 seems
+    // to indicate that WebSockets connections should be fresh HTTP
+    // connections, not ones that have previously been used for plain HTTP.
+    // Therefore we require an exact scheme match here, rather than allowing an
+    // upgrade from http to ws or https to wss.  This matches what browsers do.
+    scheme_is_compatible := scheme == previous.scheme
+    return  host == previous.host
+        and port == previous.port
+        and scheme_is_compatible
 
   /// Returns the hostname, with the port appended if it is non-default.
   host_with_port -> string:

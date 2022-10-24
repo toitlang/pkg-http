@@ -1,6 +1,6 @@
 // Copyright (C) 2022 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
-// be found in the EXAMPLES_LICENSE file.
+// be found in the tests/TESTS_LICENSE file.
 
 import expect show *
 import http
@@ -41,12 +41,16 @@ TEST_PACKETS := [
     "€€£" * 40,
 ]
 
+sent_but_not_reflected := 0
+
 client_sending web_socket -> none:
   TEST_PACKETS.do: | packet |
     2.repeat:
       // Send with a single call to `send`.
+      sent_but_not_reflected++
       web_socket.send packet
       // Send with a writer.
+      sent_but_not_reflected++
       writer := web_socket.start_sending
       pos := 0
       while pos < packet.size:
@@ -81,9 +85,13 @@ start_server network -> int:
     server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
       if request.path == "/":
         web_socket := server.web_socket request response_writer
-        // The server end of the web socket just echoes back what it gets.
+        // For this test, the server end of the web socket just echoes back
+        // what it gets.
         while data := web_socket.receive:
+          sent_but_not_reflected--
           web_socket.send data
+        sleep --ms=10  // Give the client some time to count up before we check the result.
+        expect_equals 0 sent_but_not_reflected
       else:
         response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
   return port
