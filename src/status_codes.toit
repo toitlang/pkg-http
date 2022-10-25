@@ -85,9 +85,16 @@ Status code for an unknown request path.
 */
 STATUS_NOT_FOUND /int ::= 404
 
+/**
+Status code for a misprogramming of the server.
+*/
+STATUS_INTERNAL_SERVER_ERROR /int ::= 500
+
 status_messages_/Map ::= {
   STATUS_OK: "OK",
   STATUS_SWITCHING_PROTOCOLS: "Switching Protocols",
+  STATUS_MOVED_PERMANENTLY: "Moved Permanently",
+  STATUS_INTERNAL_SERVER_ERROR: "Internal Server Error",
 }
 
 status_message status_code/int -> string:

@@ -75,6 +75,7 @@ class Connection:
     else:
       // Return a writer that doesn't accept any data.
       body_writer = ContentLengthWriter this writer_ 0
+      headers.set "Content-Length" "0"
 
     socket_.set_no_delay false
 
