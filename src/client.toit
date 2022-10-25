@@ -606,12 +606,17 @@ class Client:
         result[pos++] = c
     return result
 
+  is_close_exception_ exception -> bool:
+    return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
+        or exception == "Broken pipe"
+        or exception == "Connection reset by peer"
+
   try_to_reuse_ location/ParsedUri_ [block]:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
     reused := ensure_connection_ location
-    catch --unwind=(: not reused or it != reader.UNEXPECTED_END_OF_READER_EXCEPTION and it != "Broken pipe"):
+    catch --unwind=(: not reused or not is_close_exception_ it):
       block.call connection_
       return
     // We tried to reuse an already-open connection, but the server closed it.
