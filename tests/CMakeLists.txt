@@ -37,7 +37,7 @@ foreach(file ${TESTS})
   endif()
   add_test(
     NAME "${test_name}"
-    COMMAND "${TOIT_EXEC}" "${file}"
+    COMMAND "${TOIT_EXEC}" "-Xenable-asserts" "${file}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT ${TEST_TIMEOUT})
