@@ -75,7 +75,8 @@ class Connection:
     else:
       // Return a writer that doesn't accept any data.
       body_writer = ContentLengthWriter this writer_ 0
-      headers.set "Content-Length" "0"
+      if not headers.matches "Connection" "upgrade":
+        headers.set "Content-Length" "0"
 
     socket_.set_no_delay false
 
@@ -137,9 +138,6 @@ class Connection:
     return Response this version status_code status_message headers body_reader
 
   body_reader_ headers/Headers --request/bool -> reader.Reader:
-    // This method should not be used on WebSocket upgrades.
-    assert: not headers.matches "Connection" "upgrade"
-
     content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
