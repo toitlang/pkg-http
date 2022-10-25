@@ -651,6 +651,11 @@ class Client:
   default_port -> int:
     return use_tls_by_default_ ? 443 : 80
 
+  close:
+    if connection_:
+      connection_.close
+      connection_ = null
+
 // TODO: This is just a slower version of string.to_ascii_lower, which is in
 // newer SDKs.
 to_ascii_lower_ str/string -> string:
