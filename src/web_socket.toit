@@ -225,7 +225,7 @@ class WebSocket:
     and sends a response confirming the upgrade.
   Otherwise responds with an error code and returns null.
   */
-  static check_server_upgrade_request_ request/Request response_writer/ResponseWriter_ -> string?:
+  static check_server_upgrade_request_ request/Request response_writer/ResponseWriter -> string?:
     connection_header := request.headers.single "Connection"
     upgrade_header := request.headers.single "Upgrade"
     version_header := request.headers.single "Sec-WebSocket-Version"
