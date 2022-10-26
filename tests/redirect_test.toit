@@ -37,6 +37,7 @@ test_get network/net.Interface --do_drain/bool=false:
   expect_equals 302 response.status_code
   if do_drain:
     drain response
+  client.close
 
 test_post network/net.Interface --do_drain/bool=false:
   print "Post$(do_drain ? " (manual drain)" : "")"
@@ -105,6 +106,7 @@ test_post network/net.Interface --do_drain/bool=false:
   if do_drain:
     drain response
 
+  client.close
 
 main:
   network := net.open
