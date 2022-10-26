@@ -73,11 +73,10 @@ class Server:
           if not detached: socket.close
 
   web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
-    rw := response_writer as ResponseWriter_
-    nonce := WebSocket.check_server_upgrade_request_ request rw
+    nonce := WebSocket.check_server_upgrade_request_ request response_writer
     if nonce == null: return null
     response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
-    return WebSocket rw.detach
+    return WebSocket response_writer.detach
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     while true:
@@ -87,7 +86,7 @@ class Server:
       if not request: return false
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
-      writer ::= ResponseWriter_ connection request request_logger
+      writer ::= ResponseWriter connection request request_logger
       try:
         catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR) --trace=(: it != DEADLINE_EXCEEDED_ERROR):
           handler.call request writer
@@ -97,7 +96,7 @@ class Server:
         request.drain
         writer.close
 
-class ResponseWriter_ implements ResponseWriter:
+class ResponseWriter:
   static VERSION ::= "HTTP/1.1"
 
   connection_/Connection? := null
@@ -153,10 +152,3 @@ class ResponseWriter_ implements ResponseWriter:
     connection := connection_
     connection_ = null
     return connection.detach
-
-interface ResponseWriter:
-  headers -> Headers
-  write_headers status_code/int --message/string?=null
-  write data
-  detach -> tcp.Socket
-  redirect status_code/int location/string --message/string?=null --body/string?=null -> none
