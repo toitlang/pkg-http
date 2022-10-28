@@ -670,7 +670,9 @@ class Client:
       remove_finalizer this
 
   finalize_:
-    print "Warning: Forgot to close HTTP client!"
+    // TODO: We should somehow warn people that they forgot to close the
+    // client.  It releases the memory earlier than relying on the
+    // finalizer, so it can avoid some out-of-memory situations.
     close
 
 // TODO: This is just a slower version of string.to_ascii_lower, which is in

@@ -46,7 +46,9 @@ class Connection:
     remove_finalizer this
 
   finalize_:
-    print "Forgot to close HTTP connection"
+    // TODO: We should somehow warn people that they forgot to close the
+    // connection.  It releases the memory earlier than relying on the
+    // finalizer, so it can avoid some out-of-memory situations.
     close
 
   drain -> none:
