@@ -62,7 +62,7 @@ class Server:
           address := socket.peer_address
           logger := logger_.with_tag "peer" address
           logger.debug "client connected"
-          e := catch --trace:
+          e := catch --trace=(: not is_close_exception_ it and it != "DEADLINE_EXCEEDED_ERROR"):
             detached = run_connection_ connection handler logger
           close_logger := e ? logger.with_tag "reason" e : logger
           if detached:
@@ -70,7 +70,7 @@ class Server:
           else:
             close_logger.debug "connection ended"
         finally:
-          if not detached: socket.close
+          connection.close
 
   web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
     nonce := WebSocket.check_server_upgrade_request_ request response_writer
@@ -88,8 +88,7 @@ class Server:
       request_logger.debug "incoming request"
       writer ::= ResponseWriter connection request request_logger
       try:
-        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR) --trace=(: it != DEADLINE_EXCEEDED_ERROR):
-          handler.call request writer
+        handler.call request writer
       finally:
         // Drain unread content to allow the connection to be reused.
         if writer.detached_: return true
@@ -126,7 +125,7 @@ class ResponseWriter:
   write_headers_ status_code/int --message/string? --has_body/bool:
     if body_writer_: return
     body_writer_ = connection_.send_headers
-        "$VERSION $status_code $(message ? message : (status_message status_code))\r\n"
+        "$VERSION $status_code $(message or (status_message status_code))\r\n"
         headers
         --is_client_request=false
         --has_body=has_body

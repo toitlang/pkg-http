@@ -24,6 +24,8 @@ run_client network port/int -> none:
 
   client_sending web_socket
 
+  client.close
+
 TEST_PACKETS := [
     "Hello, World!",
     "*" * 125,

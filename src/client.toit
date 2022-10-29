@@ -39,9 +39,13 @@ PATH ::= "/get"
 
 main:
   network := net.open
-  client := http.Client network
-  response := client.get URI PATH
-  data := json.decode_stream response.body
+  client := null
+  try:
+    client = http.Client network
+    response := client.get URI PATH
+    data := json.decode_stream response.body
+  finally:
+    if client: client.close
 ```
 
 For https connection use the $Client.tls constructor with the certificate of
@@ -84,6 +88,12 @@ class Client:
     insecure default.
   If the client is used for secure connections, the $root_certificates must
     contain the root certificate of the server.
+  A client will try to keep a connection open to the last server it
+    contacted, in the hope that the next request will connect to the same
+    server.  This can save a lot of CPU time for TLS connections which are
+    expensive to set up, but it also reserves a fairly large amount of
+    buffer memory for the TLS connection.  Call $close (perhaps in a finally
+    clause) to release the connection.
   See the `certificate_roots` package for common roots:
     https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
   Use `net.open` to obtain an interface.
@@ -91,6 +101,7 @@ class Client:
   constructor .interface_
       --root_certificates/List=[]:
     root_certificates_ = root_certificates
+    add_finalizer this:: this.finalize_
 
   /**
   Constructs a new client.
@@ -113,6 +124,7 @@ class Client:
     root_certificates_ = root_certificates
     server_name_ = server_name
     certificate_ = certificate
+    add_finalizer this:: this.finalize_
 
   /**
   Variant of $(new_request method --host).
@@ -606,11 +618,6 @@ class Client:
         result[pos++] = c
     return result
 
-  is_close_exception_ exception -> bool:
-    return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
-        or exception == "Broken pipe"
-        or exception == "Connection reset by peer"
-
   try_to_reuse_ location/ParsedUri_ [block]:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
@@ -660,6 +667,13 @@ class Client:
     if connection_:
       connection_.close
       connection_ = null
+      remove_finalizer this
+
+  finalize_:
+    // TODO: We should somehow warn people that they forgot to close the
+    // client.  It releases the memory earlier than relying on the
+    // finalizer, so it can avoid some out-of-memory situations.
+    close
 
 // TODO: This is just a slower version of string.to_ascii_lower, which is in
 // newer SDKs.

@@ -28,6 +28,7 @@ class Connection:
     location_ = location
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
+    add_finalizer this:: this.finalize_
 
   new_request method/string path/string headers/Headers -> Request:
     if current_reader_ or current_writer_: throw "Previous request not completed"
@@ -42,6 +43,13 @@ class Connection:
     current_writer_ = null
     socket_ = null
     reader_ = null
+    remove_finalizer this
+
+  finalize_:
+    // TODO: We should somehow warn people that they forgot to close the
+    // connection.  It releases the memory earlier than relying on the
+    // finalizer, so it can avoid some out-of-memory situations.
+    close
 
   drain -> none:
     if current_reader_:
@@ -115,9 +123,11 @@ class Connection:
     return Request.server this body_reader method path version headers
 
   detach -> DetachedSocket_:
+    if not socket_: throw "ALREADY_CLOSED"
     socket := socket_
     socket_ = null
     buffered := reader_.read_bytes reader_.buffered
+    remove_finalizer this
     return DetachedSocket_ socket buffered
 
   read_response -> Response:
@@ -303,3 +313,9 @@ class DetachedSocket_ implements tcp.Socket:
   local_address -> net.SocketAddress: return socket_.local_address
   peer_address -> net.SocketAddress: return socket_.peer_address
   mtu -> int: return socket_.mtu
+
+is_close_exception_ exception -> bool:
+  return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
+      or exception == "Broken pipe"
+      or exception == "Connection reset by peer"
+      or exception == "NOT_CONNECTED"
