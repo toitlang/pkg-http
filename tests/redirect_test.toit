@@ -116,4 +116,5 @@ main:
   test_post network
   test_post network --do_drain
 
+  print "Closing network"
   network.close
