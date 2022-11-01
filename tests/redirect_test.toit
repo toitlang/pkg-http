@@ -118,3 +118,4 @@ main:
 
   print "Closing network"
   network.close
+  print "done"
