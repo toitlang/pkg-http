@@ -70,7 +70,7 @@ class Server:
           else:
             close_logger.debug "connection ended"
         finally:
-          connection.close
+          connection.close_write
 
   web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
     nonce := WebSocket.check_server_upgrade_request_ request response_writer
