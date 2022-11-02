@@ -30,9 +30,9 @@ class Connection:
     writer_ = writer.Writer socket_
     add_finalizer this:: this.finalize_
 
-  new_request method/string path/string headers/Headers -> Request:
+  new_request method/string path/string headers/Headers -> OutgoingRequest:
     if current_reader_ or current_writer_: throw "Previous request not completed"
-    return Request.client this method path headers
+    return OutgoingRequest.private_ this method path headers
 
   close:
     if socket_:
@@ -102,7 +102,7 @@ class Connection:
 
   // Gets the next request from the client. If the client closes the
   // connection, returns null.
-  read_request -> Request?:
+  read_request -> IncomingRequest?:
     // In theory HTTP/1.1 can support pipelining, but it causes issues
     // with many servers, so nobody uses it.
     if current_reader_: throw "Previous response not yet finished"
@@ -120,7 +120,7 @@ class Connection:
     body_reader := body_reader_ headers --request=true
 
     current_reader_ = body_reader
-    return Request.server this body_reader method path version headers
+    return IncomingRequest.private_ this body_reader method path version headers
 
   detach -> DetachedSocket_:
     if not socket_: throw "ALREADY_CLOSED"

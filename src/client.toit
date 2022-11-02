@@ -135,7 +135,7 @@ class Client:
   A URI that starts with "http" (no "s") will disable TLS even if the Client
     was created as a TLS client.
   */
-  new_request method/string -> Request
+  new_request method/string -> OutgoingRequest
       --uri/string
       --headers/Headers=Headers:
     parsed := parse_ uri --web_socket=false
@@ -148,9 +148,9 @@ class Client:
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
-  The returned $Request should be sent with $Request.send.
+  The returned $OutgoingRequest should be sent with $OutgoingRequest.send.
   */
-  new_request method/string -> Request
+  new_request method/string -> OutgoingRequest
       --host/string
       --port/int?=null
       --path/string="/"
@@ -169,7 +169,7 @@ class Client:
 
   The $method is usually one of $GET, $POST, $PUT, $DELETE.
 
-  The returned $Request should be sent with $Request.send.
+  The returned $OutgoingRequest should be sent with $OutgoingRequest.send.
 
   A port can be provided in two ways:
   - using the $port parameter, or
@@ -177,7 +177,7 @@ class Client:
 
   If neither is specified then the default port is used.
   */
-  new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> Request:
+  new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> OutgoingRequest:
     parsed := ParsedUri_.private_
         --scheme=(use_tls_by_default_ ? "https" : "http")
         --host=host
@@ -391,8 +391,8 @@ class Client:
 
   # Advanced
   If the data can be generated dynamically, it's more efficient to create a new
-    request with $new_request and to set the $Request.body to a reader that produces
-    the data only when needed.
+    request with $new_request and to set the $OutgoingRequest.body to a reader
+    that produces the data only when needed.
   */
   post data/ByteArray -> Response
       --host/string

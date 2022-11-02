@@ -106,7 +106,7 @@ start_server network -> int:
 
 
 listen server server_socket my_port other_port:
-  server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
+  server.listen server_socket:: | request/http.IncomingRequest response_writer/http.ResponseWriter |
     if request.path == "/":
       response_writer.headers.set "Content-Type" "text/html"
       response_writer.write INDEX_HTML
