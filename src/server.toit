@@ -27,6 +27,9 @@ class Server:
   certificate_/tls.Certificate? ::= null
   root_certificates_/List ::= []
 
+  // For testing.
+  call_in_finalizer_/Lambda? := null
+
   constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
     logger_ = logger
 
@@ -79,6 +82,7 @@ class Server:
     return WebSocket response_writer.detach
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
+    if call_in_finalizer_: connection.call_in_finalizer_ = call_in_finalizer_
     while true:
       request := null
       with_timeout read_timeout:

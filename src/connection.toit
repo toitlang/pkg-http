@@ -23,6 +23,9 @@ class Connection:
   current_writer_ := null
   current_reader_/reader.Reader? := null
 
+  // For testing.
+  call_in_finalizer_/Lambda? := null
+
   constructor .socket_ --location --host/string?=null:
     host_ = host
     location_ = location
@@ -49,6 +52,7 @@ class Connection:
     // TODO: We should somehow warn people that they forgot to close the
     // connection.  It releases the memory earlier than relying on the
     // finalizer, so it can avoid some out-of-memory situations.
+    if call_in_finalizer_ and socket_: call_in_finalizer_.call this
     close
 
   drain -> none:
