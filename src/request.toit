@@ -22,7 +22,7 @@ abstract class Request:
   abstract drain -> none
 
 /// Outgoing request to an HTTP server, we are acting like a client.
-class OutgoingRequest extends Request:
+class RequestOutgoing extends Request:
   connection_/Connection := ?
 
   method/string
@@ -57,7 +57,7 @@ class OutgoingRequest extends Request:
     if body: while body.read:
 
 /// Incoming request from an HTTP client like a browser, we are the server.
-class IncomingRequest extends Request:
+class RequestIncoming extends Request:
   connection_/Connection := ?
 
   method/string
