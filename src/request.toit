@@ -10,43 +10,76 @@ import .chunked
 import .response
 import .connection
 
-class Request:
+/**
+Legacy interface for older code.
+*/
+abstract class Request:
+  abstract method -> string
+  abstract path -> string
+  abstract headers -> Headers
+  abstract body -> reader.Reader?
+  body= value/reader.Reader: throw "NOT_IMPLEMENTED"
+  send -> Response: throw "NOT_IMPLEMENTED"
+  content_length -> int?: throw "NOT_IMPLEMENTED"
+  abstract drain -> none
+
+/// Outgoing request to an HTTP server, we are acting like a client.
+class RequestOutgoing extends Request:
   connection_/Connection := ?
 
   method/string
   path/string
   headers/Headers
-  version/string ::= "HTTP/1.1"
 
+  /**
+  The body of the outgoing request.
+  Assign to this to give the outgoing request a body to write something to the
+    server.
+  This is especially useful for POST requests, which often contain
+    uploaded data.  The body should be set before calling the $send
+    method.
+  */
   body/reader.Reader? := null
 
-  is_client_request_/bool := ?
-
-  // Outgoing request to an HTTP server, we are acting like a client.
-  constructor.client .connection_ .method .path .headers:
-    is_client_request_ = true
-
-  // Incoming request from an HTTP client like a browser, we are the server.
-  constructor.server .connection_ .body .method .path .version .headers:
-    is_client_request_ = false
-
-  content_length -> int?:
-    if body is ContentLengthReader:
-      return (body as ContentLengthReader).content_length
-    return null
+  constructor.private_ .connection_ .method .path .headers:
 
   send -> Response:
     slash := (path.starts_with "/") ? "" : "/"
     body_writer := connection_.send_headers
-        "$method $slash$path $version\r\n"
+        "$method $slash$path HTTP/1.1\r\n"
         headers
-        --is_client_request=is_client_request_
+        --is_client_request=true
         --has_body=(body != null)
     if body:
       while data := body.read:
         body_writer.write data
     body_writer.close
     return connection_.read_response
+
+  drain:
+    if body: while body.read:
+
+/// Incoming request from an HTTP client like a browser, we are the server.
+class RequestIncoming extends Request:
+  connection_/Connection := ?
+
+  method/string
+  path/string
+  headers/Headers
+  version/string
+
+  /**
+  Read from this to get any data from the client, eg from a POST
+    request.
+  */
+  body/reader.Reader
+
+  constructor.private_ .connection_ .body .method .path .version .headers:
+
+  content_length -> int?:
+    if body is ContentLengthReader:
+      return (body as ContentLengthReader).content_length
+    return null
 
   drain:
     while body.read:
