@@ -10,7 +10,9 @@ import .chunked
 import .response
 import .connection
 
-/// Legacy interface for older code.
+/**
+Legacy interface for older code.
+*/
 abstract class Request:
   abstract method -> string
   abstract path -> string
@@ -30,6 +32,7 @@ class RequestOutgoing extends Request:
   headers/Headers
 
   /**
+  The body of the outgoing request.
   Assign to this to give the outgoing request a body to write something to the
     server.
   This is especially useful for POST requests, which often contain
