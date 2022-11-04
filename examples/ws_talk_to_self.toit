@@ -55,7 +55,7 @@ start_server network -> int:
   port := server_socket.local_address.port
   server := http.Server
   task --background::
-    server.listen server_socket:: | request/http.Request response_writer/http.ResponseWriter |
+    server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
       if request.path == "/":
         web_socket := server.web_socket request response_writer
         // The server end of the web socket just echoes back what it gets.

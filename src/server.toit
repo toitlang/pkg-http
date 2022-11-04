@@ -75,7 +75,7 @@ class Server:
         finally:
           connection.close_write
 
-  web_socket request/Request response_writer/ResponseWriter -> WebSocket?:
+  web_socket request/RequestIncoming response_writer/ResponseWriter -> WebSocket?:
     nonce := WebSocket.check_server_upgrade_request_ request response_writer
     if nonce == null: return null
     response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
@@ -103,7 +103,7 @@ class ResponseWriter:
   static VERSION ::= "HTTP/1.1"
 
   connection_/Connection? := null
-  request_/Request
+  request_/RequestIncoming
   logger_/log.Logger
   headers_/Headers
   body_writer_/BodyWriter? := null
