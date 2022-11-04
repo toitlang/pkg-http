@@ -22,6 +22,7 @@ class Connection:
   // These are writers and readers that have been given to API users.
   current_writer_ := null
   current_reader_/reader.Reader? := null
+  write_closed_ := false
 
   // For testing.
   call_in_finalizer_/Lambda? := null
@@ -42,11 +43,12 @@ class Connection:
       socket_.close
       if current_writer_:
         current_writer_.close
-    current_reader_ = null
-    current_writer_ = null
-    socket_ = null
-    reader_ = null
-    remove_finalizer this
+      socket_ = null
+      remove_finalizer this
+      write_closed_ = true
+      current_reader_ = null
+      current_writer_ = null
+      reader_ = null
 
   finalize_:
     // TODO: We should somehow warn people that they forgot to close the
@@ -56,6 +58,9 @@ class Connection:
     close
 
   drain -> none:
+    if write_closed_:
+      current_reader_ = null
+      close
     if current_reader_:
       while data := current_reader_.read:
         null  // Do nothing with the data.
@@ -64,9 +69,20 @@ class Connection:
       current_writer_.close
     current_writer_ = null
 
+  /**
+  Indicates to the other side that we won't be writing any more
+    on this connection.  On TCP this means sending a FIN packet.
+  If we are not currently reading from the connection the
+    connection is completely closed.
+  Otherwise the connection will be closed on completing the current
+    read.
+  */
   close_write:
-    if socket_:
+    if not current_reader_:
+      close
+    else if socket_:
       socket_.close_write
+      write_closed_ = true
 
   send_headers -> BodyWriter
       status/string headers/Headers
@@ -110,7 +126,10 @@ class Connection:
     // In theory HTTP/1.1 can support pipelining, but it causes issues
     // with many servers, so nobody uses it.
     if current_reader_: throw "Previous response not yet finished"
-    if not reader_.can_ensure 1: return null
+
+    if not reader_.can_ensure 1:
+      if write_closed_: close
+      return null
     index_of_first_space := reader_.index_of_or_throw ' '
     method := reader_.read_string (index_of_first_space)
     reader_.skip 1
@@ -121,6 +140,7 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
+
     body_reader := body_reader_ headers --request=true
 
     current_reader_ = body_reader
@@ -136,20 +156,25 @@ class Connection:
 
   read_response -> Response:
     if current_reader_: throw "Previous response not yet finished"
-    version := reader_.read_string (reader_.index_of_or_throw ' ')
-    reader_.skip 1
-    status_code := int.parse (reader_.read_string (reader_.index_of_or_throw ' '))
-    reader_.skip 1
-    status_message := reader_.read_string (reader_.index_of_or_throw '\r')
-    reader_.skip 1
-    if reader_.read_byte != '\n': throw "FORMAT_ERROR"
+    try:
+      version := reader_.read_string (reader_.index_of_or_throw ' ')
+      reader_.skip 1
+      status_code := int.parse (reader_.read_string (reader_.index_of_or_throw ' '))
+      reader_.skip 1
+      status_message := reader_.read_string (reader_.index_of_or_throw '\r')
+      reader_.skip 1
+      if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
-    headers := read_headers_
-    body_reader := body_reader_ headers --request=false
+      headers := read_headers_
 
-    current_reader_ = body_reader
+      body_reader := body_reader_ headers --request=false
 
-    return Response this version status_code status_message headers body_reader
+      current_reader_ = body_reader
+
+      return Response this version status_code status_message headers body_reader
+    finally:
+      if not current_reader_:
+        close
 
   body_reader_ headers/Headers --request/bool -> reader.Reader:
     content_length := headers.single "Content-Length"
@@ -212,6 +237,7 @@ class Connection:
     if current_reader_:
       if reader != current_reader_: throw "Read from reader that was already done"
       current_reader_ = null
+      if write_closed_: close
 
   writing_done_ writer:
     if current_writer_:
@@ -235,7 +261,9 @@ class ContentLengthReader implements reader.SizedReader:
       connection_.reading_done_ this
       return null
     data := reader_.read --max_size=remaining_length_
-    if not data: throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
+    if not data:
+      connection_.close
+      throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
     remaining_length_ -= data.size
     return data
 
@@ -247,7 +275,9 @@ class UnknownContentLengthReader implements reader.Reader:
 
   read -> ByteArray?:
     data := reader_.read
-    if not data: return null
+    if not data:
+      connection_.close  // After an unknown content length the connection must close.
+      return null
     return data
 
 interface BodyWriter:
