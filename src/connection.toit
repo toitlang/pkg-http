@@ -38,6 +38,9 @@ class Connection:
     if current_reader_ or current_writer_: throw "Previous request not completed"
     return RequestOutgoing.private_ this method path headers
 
+  is_open_:
+    return socket_ != null
+
   close:
     if socket_:
       socket_.close
@@ -126,6 +129,7 @@ class Connection:
     // In theory HTTP/1.1 can support pipelining, but it causes issues
     // with many servers, so nobody uses it.
     if current_reader_: throw "Previous response not yet finished"
+    if not socket_: return null
 
     if not reader_.can_ensure 1:
       if write_closed_: close
@@ -282,6 +286,7 @@ class UnknownContentLengthReader implements reader.Reader:
 
 interface BodyWriter:
   write data
+  is_done -> bool
   close
 
 class ContentLengthWriter implements BodyWriter:
@@ -291,16 +296,15 @@ class ContentLengthWriter implements BodyWriter:
 
   constructor .connection_ .writer_ .remaining_length_:
 
+  is_done:
+    return remaining_length_ == 0
+
   write data:
     writer_.write data
     remaining_length_ -= data.size
 
   close:
     if connection_:
-      if remaining_length_ != 0:
-        // The connection is ruined if we close before we finished writing the
-        // current thing.
-        connection_.close_write
       connection_.writing_done_ this
     connection_ = null
 
