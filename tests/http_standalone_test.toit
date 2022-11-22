@@ -70,20 +70,32 @@ run_client network port/int -> none:
 
   expect_throw "Too many redirects": client.get --uri="http://localhost:$port/redirect_loop"
 
-  response = client.get --uri="http://localhost:$port/cause_500"
+  response = client.get --uri="http://localhost:$port/500_because_nothing_written"
   expect_equals 500 response.status_code
 
-  response = client.get --uri="http://localhost:$port/throw"
-  expect_equals 500 response.status_code
+  response2 := client.get --uri="http://localhost:$port/500_because_throw_before_headers"
+  expect_equals 500 response2.status_code
 
-  response = client.get --uri="http://localhost:$port/redirect_from"
+  exception3 := catch:
+    response3 := client.get --uri="http://localhost:$port/hard_close_because_wrote_too_little"
+    if 200 <= response3.status_code <= 299:
+      while response3.body.read: null
+  expect_equals "UNEXPECTED_END_OF_READER" exception3
+
+  exception4 := catch:
+    response4 := client.get --uri="http://localhost:$port/hard_close_because_throw_after_headers"
+    if 200 <= response4.status_code <= 299:
+      while response4.body.read: null
+  expect_equals "UNEXPECTED_END_OF_READER" exception4
+
+  response5 := client.get --uri="http://localhost:$port/redirect_from"
   expect connection != client.connection_  // Because of two redirects we had to make two new connections.
   expect_equals "application/json"
-      response.headers.single "Content-Type"
-  crock = #[]
-  while data := response.body.read:
-    crock += data
-  json.decode crock
+      response5.headers.single "Content-Type"
+  crock2 := #[]
+  while data := response5.body.read:
+    crock2 += data
+  json.decode crock2
 
   client.close
 
@@ -123,9 +135,16 @@ listen server server_socket my_port other_port:
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/foo.json"
     else if request.path == "/redirect_loop":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_loop"
-    else if request.path == "/cause_500":
+    else if request.path == "/500_because_nothing_written":
       // Forget to write anything - the server should send 500 - Internal error.
-    else if request.path == "/throw":
+    else if request.path == "/500_because_throw_before_headers":
       throw "** Expect a stack trace here caused by testing\n** that we send 500 when server throws"
+    else if request.path == "/hard_close_because_wrote_too_little":
+      response_writer.headers.set "Content-Length" "2"
+      response_writer.write "x"  // Only writes half the message.
+    else if request.path == "/hard_close_because_throw_after_headers":
+      response_writer.headers.set "Content-Length" "2"
+      response_writer.write "x"  // Only writes half the message.
+      throw "** Expect a stack trace here caused by testing\n** that we close the connection on a throw"
     else:
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"

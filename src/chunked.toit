@@ -65,6 +65,10 @@ class ChunkedWriter implements BodyWriter:
   connection_/Connection? := null
   writer_/writer.Writer
 
+  // We don't know the amount of data ahead of time, so it may already be done.
+  is_done -> bool:
+    return true
+
   constructor .connection_ .writer_:
 
   write data -> int:

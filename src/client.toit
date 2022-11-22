@@ -636,7 +636,7 @@ class Client:
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
-    if connection_:
+    if connection_ and connection_.is_open_:
       if location.can_reuse_connection connection_.location_:
         connection_.drain  // Remove any remnants of previous requests.
         return true
