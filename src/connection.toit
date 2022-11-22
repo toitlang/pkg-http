@@ -73,12 +73,11 @@ class Connection:
     current_writer_ = null
 
   /**
-  Indicates to the other side that we won't be writing any more
-    on this connection.  On TCP this means sending a FIN packet.
-  If we are not currently reading from the connection the
-    connection is completely closed.
-  Otherwise the connection will be closed on completing the current
-    read.
+  Indicates to the other side that we won't be writing any more on this
+    connection.  On TCP this means sending a FIN packet.
+  If we are not currently reading from the connection the connection is
+    completely closed.  Otherwise the connection will be closed on completing
+    the current read.
   */
   close_write:
     if not current_reader_:
@@ -144,7 +143,6 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-
     body_reader := body_reader_ headers --request=true
 
     current_reader_ = body_reader
@@ -170,12 +168,11 @@ class Connection:
       if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
       headers := read_headers_
-
       body_reader := body_reader_ headers --request=false
 
       current_reader_ = body_reader
-
       return Response this version status_code status_message headers body_reader
+
     finally:
       if not current_reader_:
         close
@@ -296,7 +293,7 @@ class ContentLengthWriter implements BodyWriter:
 
   constructor .connection_ .writer_ .remaining_length_:
 
-  is_done:
+  is_done -> bool:
     return remaining_length_ == 0
 
   write data:
