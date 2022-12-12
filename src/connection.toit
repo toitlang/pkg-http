@@ -354,3 +354,4 @@ is_close_exception_ exception -> bool:
       or exception == "Broken pipe"
       or exception == "Connection reset by peer"
       or exception == "NOT_CONNECTED"
+      or (exception is string and exception.contains "connection was aborted")
