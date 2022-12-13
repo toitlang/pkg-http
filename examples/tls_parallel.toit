@@ -5,51 +5,63 @@ import net.x509 as net
 import tls
 import writer
 
-// Test connections to a site that immediately starts sending 16k TLS records.
+class MyRequest:
+  client /tls.Socket? := null
+  bytes := 0
+  name /string
+
+  constructor .name .client:
+
+  stringify -> string:
+    return "Downloaded $bytes bytes from $name"
 
 main:
-  test_site "cdimage.ubuntu.com" "/daily-canary/current/lunar-desktop-canary-amd64.manifest"
-  test_site "www.google.com" "/"
-  test_site "ist.mit.edu" "/start-guests"
-  //test_site "europarl.europa.eu" "/portal/en"  // Just randomly closes the connection - probably some DDOS protection.
-  test_site "www.fmprc.gov.cn" "/mfa_eng/"
-  //test_site "nkumbauniversity.ac.ug" "/"
-  test_site "www.ccc.de" "/images/header.png?1329577825"
-  test_site "api.open-meteo.com" "/v1/forecast?latitude=56.10&longitude=10.14&hourly=temperature_2m"
-  test_site "home.cern" "/"
-  test_site "www.sciopen.com" "/article_pdf/1483995750826913793.pdf"
+  sites := [
+      ["cdimage.ubuntu.com", "/daily-canary/current/lunar-desktop-canary-amd64.manifest"],
+      ["www.google.com", "/"],
+      ["ist.mit.edu", "/start-guests"],
+      //["www.fmprc.gov.cn", "/mfa_eng/"],
+      //["www.ccc.de", "/images/header.png?1329577825"],
+      //["api.open-meteo.com", "/v1/forecast?latitude=56.10&longitude=10.14&hourly=temperature_2m"],
+      //["home.cern", "/"],
+      //["www.sciopen.com", "/article_pdf/1483995750826913793.pdf"],
+  ]
+  sites.do:
+    host := it[0]
+    path := it[1]
 
-test_site url path:
-  host := url
-  port := 443
+    raw := tcp.TcpSocket
+    raw.connect host 443
+    client := tls.Socket.client raw
+      --root_certificates=[
+          GLOBALSIGN_ROOT_CA,
+          GLOBALSIGN_ROOT_CA_R3,
+          DIGICERT_GLOBAL_ROOT_CA,
+          DIGICERT_GLOBAL_ROOT_G2,
+          ISRG_ROOT_X1,
+          GTS_ROOT_R1,
+          USERTRUST_RSA_CERTIFICATION_AUTHORITY,
+          COMODO_AAA_SERVICES_ROOT]
 
-  raw := tcp.TcpSocket
-  raw.connect host port
-  socket := tls.Socket.client raw
-    --root_certificates=[
-        GLOBALSIGN_ROOT_CA,
-        GLOBALSIGN_ROOT_CA_R3,
-        DIGICERT_GLOBAL_ROOT_CA,
-        DIGICERT_GLOBAL_ROOT_G2,
-        ISRG_ROOT_X1,
-        GTS_ROOT_R1,
-        USERTRUST_RSA_CERTIFICATION_AUTHORITY,
-        COMODO_AAA_SERVICES_ROOT]
+    writer := writer.Writer client
+    writer.write """GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
-  writer := writer.Writer socket
-  writer.write """GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
+    expect client.session_.mode == tls.SESSION_MODE_TOIT
+    print "Toit mode $host"
+    task:: (MyRequest host client)
+    //MyRequest host client
+  //connections.do: | request |
+    //task:: drain request
 
-  bytes := 0
-
-  expect socket.session_.mode == tls.SESSION_MODE_TOIT
-  print "Toit mode $host"
-
-  while data := socket.read:
-    bytes += data.size
-
-  socket.close
-
-  print "Read $bytes bytes from https://$host$(port == 443 ? "" : ":$port")/"
+drain request/MyRequest -> none:
+  while true:
+    client/tls.Socket := request.client
+    data := client.read
+    if not data:
+      print request
+      return
+    else:
+      request.bytes += data.size
 
 USERTRUST_RSA_CERTIFICATION_AUTHORITY ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----
