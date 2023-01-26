@@ -26,15 +26,18 @@ class Server:
   use_tls_/bool ::= false
   certificate_/tls.Certificate? ::= null
   root_certificates_/List ::= []
+  semaphore_/monitor.Semaphore? ::= null
 
   // For testing.
   call_in_finalizer_/Lambda? := null
 
-  constructor --.read_timeout=DEFAULT_READ_TIMEOUT --logger=log.default:
+  constructor --.read_timeout=DEFAULT_READ_TIMEOUT --max_tasks/int=1 --logger=log.default:
     logger_ = logger
+    if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
 
   constructor.tls
       --.read_timeout=DEFAULT_READ_TIMEOUT
+      --max_tasks/int=1
       --logger=log.default
       --certificate/tls.Certificate
       --root_certificates/List=[]:
@@ -42,6 +45,7 @@ class Server:
     use_tls_ = true
     certificate_ = certificate
     root_certificates_ = root_certificates
+    if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
 
   listen interface/tcp.Interface port/int handler/Lambda -> none:
     server_socket := interface.tcp_listen port
@@ -49,10 +53,16 @@ class Server:
 
   listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
-      accepted := server_socket.accept
-      if not accepted: continue
+      parent_task_semaphore := null
+      if semaphore_:
+        parent_task_semaphore = semaphore_
+        // Down the semaphore before the accept, so we just don't accept
+        // connections if we are at the limit.
+        semaphore_.down
+      try:  // A try to ensure the semaphore is upped.
+        accepted := server_socket.accept
+        if not accepted: continue
 
-      task --background::
         socket := accepted
         if use_tls_:
           socket = tls.Socket.server socket
@@ -60,20 +70,35 @@ class Server:
             --root_certificates=root_certificates_
 
         connection := Connection --location=null socket
-        detached := false
-        try:
-          address := socket.peer_address
-          logger := logger_.with_tag "peer" address
-          logger.debug "client connected"
-          e := catch --trace=(: not is_close_exception_ it and it != "DEADLINE_EXCEEDED_ERROR"):
-            detached = run_connection_ connection handler logger
-          close_logger := e ? logger.with_tag "reason" e : logger
-          if detached:
-            close_logger.debug "client socket detached"
-          else:
-            close_logger.debug "connection ended"
-        finally:
-          connection.close_write
+        address := socket.peer_address
+        logger := logger_.with_tag "peer" address
+        logger.debug "client connected"
+
+        // This code can be run in the current task or in a child task.
+        handle_connection_closure := ::
+          try:  // A try to ensure the semaphore is upped in the child task.
+            detached := false
+            e := catch --trace=(: not is_close_exception_ it and it != "DEADLINE_EXCEEDED_ERROR"):
+              detached = run_connection_ connection handler logger
+            connection.close_write
+            close_logger := e ? logger.with_tag "reason" e : logger
+            if detached:
+              close_logger.debug "client socket detached"
+            else:
+              close_logger.debug "connection ended"
+          finally:
+            if semaphore_: semaphore_.up  // Up the semaphore when the task ends.
+        // End of code that can be run in the current task or in a child task.
+
+        parent_task_semaphore = null  // We got this far, the semaphore is ours.
+        if semaphore_:
+          task --background handle_connection_closure
+        else:
+          // For the single-task case, just run the connection in the current task.
+          handle_connection_closure.call
+      finally:
+        // Up the semaphore if we threw before starting the task.
+        if parent_task_semaphore: parent_task_semaphore.up
 
   web_socket request/RequestIncoming response_writer/ResponseWriter -> WebSocket?:
     nonce := WebSocket.check_server_upgrade_request_ request response_writer
