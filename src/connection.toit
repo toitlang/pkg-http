@@ -355,3 +355,4 @@ is_close_exception_ exception -> bool:
       or exception == "Connection reset by peer"
       or exception == "NOT_CONNECTED"
       or (exception is string and exception.contains "connection was aborted")
+      or (exception is string and exception.contains "connection was forcibly closed")
