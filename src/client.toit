@@ -336,7 +336,7 @@ class Client:
         WebSocket.check_client_upgrade_response_ response nonce
         connection := connection_
         connection_ = null  // Can't reuse it any more.
-        return WebSocket connection.detach
+        return WebSocket connection.detach --client
 
     throw "TOO_MANY_REDIRECTS"
 
