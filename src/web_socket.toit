@@ -209,15 +209,23 @@ class WebSocket:
   If we are in a suitable place in the protocol, we send a close packet first.
   */
   close --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
+    close_write --status_code=STATUS_WEBSOCKET_NORMAL_CLOSURE
+    socket_.close
+    current_reader_ = null
+
+  /**
+  May abruptly close the WebSocket.
+  If we are in a suitable place in the protocol, we send a close packet first.
+  */
+  close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
     if current_writer_ == null:
       packet := ByteArray 4
       packet[0] = FIN_FLAG_ | OPCODE_CLOSE_
       packet[1] = 2  // Size, not including 2-byte header.
       BIG_ENDIAN.put_uint16 packet 2 status_code
-      socket_.write packet
-    socket_.close
+      catch: socket_.write packet  // Catch because the write end may already be closed.
+    socket_.close_write
     current_writer_ = null
-    current_reader_ = null
 
   static add_client_upgrade_headers_ headers/Headers -> string:
     // The WebSocket nonce is not very important and does not need to be

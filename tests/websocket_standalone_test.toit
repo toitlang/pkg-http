@@ -24,7 +24,7 @@ run_client network port/int -> none:
 
   client_sending web_socket
 
-  web_socket.close
+  web_socket.close_write
 
 TEST_PACKETS := [
     "Hello, World!",
@@ -77,7 +77,8 @@ client_reading web_socket -> none:
     // Receive with a single call to `receive`.
     2.repeat:
       round_trip_packet := web_socket.receive
-      expect_equals  packet round_trip_packet
+      expect_equals packet round_trip_packet
+  web_socket.close
 
 start_server network -> int:
   server_socket := network.tcp_listen 0
@@ -94,6 +95,7 @@ start_server network -> int:
           web_socket.send data
         sleep --ms=10  // Give the client some time to count up before we check the result.
         expect_equals 0 sent_but_not_reflected
+        web_socket.close
       else:
         response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
   return port
