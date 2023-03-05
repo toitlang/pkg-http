@@ -224,7 +224,7 @@ class WebSocket:
       packet[1] = 2  // Size, not including 2-byte header.
       BIG_ENDIAN.put_uint16 packet 2 status_code
       catch: socket_.write packet  // Catch because the write end may already be closed.
-    socket_.close_write
+    catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
     current_writer_ = null
 
   static add_client_upgrade_headers_ headers/Headers -> string:
