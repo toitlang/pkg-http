@@ -211,8 +211,11 @@ class WebSocket:
     current_reader_ = null
 
   /**
-  May abruptly close the WebSocket.
-  If we are in a suitable place in the protocol, we send a close packet first.
+  Closes the websocket.
+  Call this if we do not wish to send or receive any more messages.
+    After calling this, you do not need to call $close_write.
+  May close abruptly in an unclean way.
+  If we are in a suitable place in the protocol, sends a close packet first.
   */
   close --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
     close_write --status_code=STATUS_WEBSOCKET_NORMAL_CLOSURE
@@ -220,11 +223,16 @@ class WebSocket:
     current_reader_ = null
 
   /**
-  May abruptly close the WebSocket.
-  If we are in a suitable place in the protocol, we send a close packet first.
+  Closes the websocket for writing.
+  Call this if we are done transmitting messages, but we may have a different
+    task still receiving messages on the connection.
+  If we are in a suitable place in the protocol, sends a close packet first.
+    Otherwise, it will close abruptly, without sending the packet.
+  Most peers will respond by closing the other direction.
   */
   close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
     if current_writer_ == null:
+      // If we are not in the middle of a message, we can send a close packet.
       packet := ByteArray 8
       packet[0] = FIN_FLAG_ | OPCODE_CLOSE_
       packet[1] = MASKING_FLAG_ | 2  // Size, not including 6-byte header.
