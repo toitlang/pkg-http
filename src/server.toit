@@ -79,7 +79,7 @@ class Server:
     nonce := WebSocket.check_server_upgrade_request_ request response_writer
     if nonce == null: return null
     response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
-    return WebSocket response_writer.detach --client=false
+    return WebSocket response_writer.detach --no-client
 
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     if call_in_finalizer_: connection.call_in_finalizer_ = call_in_finalizer_
