@@ -5,12 +5,17 @@
 import expect show *
 import http
 import net
+import http.web_socket show FragmentReader_
 
 // Sets up a web server that can switch to websocket mode on the "/" path.
 // The server just sends back everything it gets.
 // Sets up a client that sends files and expects to receive them back.
 
 main:
+  unmark_bytes_test
+  client_server_test
+
+client_server_test:
   network := net.open
   port := start_server network
   run_client network port
@@ -97,3 +102,12 @@ start_server network -> int:
       else:
         response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
   return port
+
+unmark_bytes_test -> none:
+  mask := ByteArray 4: it * 17 + 2
+  for offset := 0; offset < 4; offset++:
+    for size := 98; size < 102; size++:
+      data := ByteArray size: it
+      FragmentReader_.unmask_bytes_ data mask offset
+      data.size.repeat:
+        expect_equals data[it] (it ^ mask[(it + offset) & 3])

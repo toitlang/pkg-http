@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import binary show BIG_ENDIAN
+import bitmap show blit XOR
 import crypto.sha1 show sha1
 import encoding.base64
 import net.tcp
@@ -139,9 +140,11 @@ class WebSocket:
     else if len == EIGHT_BYTE_SIZE_:
       len = BIG_ENDIAN.int64 pending_ 2
 
-    masking_bytes := masking
-        ? pending_.copy (header_size_needed - 4) header_size_needed
-        : null
+    masking_bytes := null
+    if masking:
+      masking_bytes = pending_.copy (header_size_needed - 4) header_size_needed
+      if masking_bytes == #[0, 0, 0, 0]:
+        masking_bytes = null
     result := FragmentReader_ this len pending_[0] --masking_bytes=masking_bytes
     if not result.is_ok_:
       close
@@ -407,13 +410,26 @@ class FragmentReader_:
       owner_.unread_ next_byte_array[max..]
       next_byte_array = next_byte_array[..max]
     if masking_bytes:
-      // TODO: Use blit for this.
-      masking_bytes.size.do:
-        next_byte_array[it] ^= masking_bytes[received_++ & 3]
-    else:
-      received_ += next_byte_array.size
+      unmask_bytes_ next_byte_array masking_bytes received_
+    received_ += next_byte_array.size
     return next_byte_array
 
   size -> int?:
     if control_bits_ & FIN_FLAG_ == 0: return null
     return size_
+
+  static unmask_bytes_ byte_array/ByteArray masking_bytes/ByteArray received/int -> none:
+    for i := 0; i < byte_array.size; i++:
+      if received & 3 == 0 and i + 4 < byte_array.size:
+        // When we are at the start of the masking bytes we can accelerate with blit.
+        blit
+          masking_bytes           // Source.
+          byte_array[i..]         // Destination.
+          4                       // Line width of 4 bytes.
+          --source_line_stride=0  // Restart at the beginning of the masking bytes on every line.
+          --operation=XOR         // dest[i] ^= source[j].
+        // Skip the bytes we just blitted.
+        blitted := round_down (byte_array.size - i) 4
+        i += blitted
+      if i < byte_array.size:
+        byte_array[i] ^= masking_bytes[received++ & 3]
