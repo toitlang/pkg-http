@@ -11,11 +11,12 @@ import .request
 import .response
 import .chunked
 import .headers
+import .client
 
 class Connection:
   socket_/tcp.Socket? := null
   host_/string?
-  location_ := null
+  location_/ParsedUri_? := null
   // Internal reader and writer that are used for the socket.
   reader_ := ?
   writer_/writer.Writer
@@ -27,7 +28,7 @@ class Connection:
   // For testing.
   call_in_finalizer_/Lambda? := null
 
-  constructor .socket_ --location --host/string?=null:
+  constructor .socket_ --location/ParsedUri_? --host/string?=null:
     host_ = host
     location_ = location
     reader_ = reader.BufferedReader socket_
