@@ -41,10 +41,10 @@ class WebSocket:
   pending_ /ByteArray := #[]
   current_writer_ /WebSocketWriter? := null
   current_reader_ /WebSocketReader? := null
-  client_ /bool
+  is_client_ /bool
 
   constructor .socket_ --client/bool:
-    client_ = client
+    is_client_ = client
 
   read_ -> ByteArray?:
     if pending_.size != 0:
@@ -176,7 +176,7 @@ class WebSocket:
   */
   start_sending --size/int?=null -> WebSocketWriter:
     if current_writer_: throw "PREVIOUS_WRITER_NOT_CLOSED"
-    current_writer_ = WebSocketWriter.private_ this size --masking=client_
+    current_writer_ = WebSocketWriter.private_ this size --masking=is_client_
     return current_writer_
 
   writer_close_ writer/WebSocketWriter -> none:
