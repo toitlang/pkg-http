@@ -27,6 +27,7 @@ FIN_FLAG_            ::= 0x80
 EIGHT_BYTE_SIZE_     ::= 127
 TWO_BYTE_SIZE_       ::= 126
 MAX_ONE_BYTE_SIZE_   ::= 125
+MASKING_FLAG_        ::= 0x80
 
 /**
 A WebSocket connection.
@@ -40,8 +41,10 @@ class WebSocket:
   pending_ /ByteArray := #[]
   current_writer_ /WebSocketWriter? := null
   current_reader_ /WebSocketReader? := null
+  is_client_ /bool
 
-  constructor .socket_:
+  constructor .socket_ --client/bool:
+    is_client_ = client
 
   read_ -> ByteArray?:
     if pending_.size != 0:
@@ -120,7 +123,7 @@ class WebSocket:
 
     while pending_.size < 2: get_more.call
 
-    masking := pending_[1] & 0x80 != 0
+    masking := pending_[1] & MASKING_FLAG_ != 0
     len := pending_[1] & 0x7f
     header_size_needed := ?
     if len == TWO_BYTE_SIZE_:
@@ -173,7 +176,7 @@ class WebSocket:
   */
   start_sending --size/int?=null -> WebSocketWriter:
     if current_writer_: throw "PREVIOUS_WRITER_NOT_CLOSED"
-    current_writer_ = WebSocketWriter.private_ this size
+    current_writer_ = WebSocketWriter.private_ this size --masking=is_client_
     return current_writer_
 
   writer_close_ writer/WebSocketWriter -> none:
@@ -260,8 +263,10 @@ class WebSocketWriter:
   size_ /int?
   remaining_in_fragment_ /int := 0
   fragment_sent_ /bool := false
+  masking_ /bool
 
-  constructor.private_ .owner_ .size_:
+  constructor.private_ .owner_ .size_ --masking/bool:
+    masking_ = masking
 
   write data from=0 to=data.size -> int:
     if owner_ == null: throw "ALREADY_CLOSED"
@@ -291,30 +296,31 @@ class WebSocketWriter:
 
   write_fragment_header_ max_size/int opcode/int:
     header /ByteArray := ?
+    masking_flag := masking_ ? MASKING_FLAG_ : 0
     if size_:
       // We know the size.  Write a single fragment with the fin flag and the
       // exact size.
       if opcode == OPCODE_CONTINUATION_: throw "TOO_MUCH_WRITTEN"
       remaining_in_fragment_ = size_
       if size_ > 0xffff:
-        header = ByteArray 10
-        header[1] = EIGHT_BYTE_SIZE_
+        header = ByteArray (masking_ ? 14 : 10)
+        header[1] = EIGHT_BYTE_SIZE_ | masking_flag
         BIG_ENDIAN.put_int64 header 2 size_
       else if size_ > MAX_ONE_BYTE_SIZE_:
-        header = ByteArray 4
-        header[1] = TWO_BYTE_SIZE_
+        header = ByteArray (masking_ ? 8 : 4)
+        header[1] = TWO_BYTE_SIZE_ | masking_flag
         BIG_ENDIAN.put_uint16 header 2 size_
       else:
-        header = ByteArray 2
-        header[1] = size_
+        header = ByteArray (masking_ ? 6 : 2)
+        header[1] = size_ | masking_flag
       header[0] = opcode | FIN_FLAG_
     else:
       // We don't know the size.  Write multiple fragments of up to
       // 125 bytes.
       remaining_in_fragment_ = min MAX_ONE_BYTE_SIZE_ max_size
-      header = ByteArray 2
+      header = ByteArray (masking_ ? 6 : 2)
       header[0] = opcode
-      header[1] = remaining_in_fragment_
+      header[1] = remaining_in_fragment_ | masking_flag
 
     owner_.write_ header
 
