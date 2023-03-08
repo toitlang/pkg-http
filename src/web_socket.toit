@@ -225,10 +225,10 @@ class WebSocket:
   */
   close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
     if current_writer_ == null:
-      packet := ByteArray 4
+      packet := ByteArray 8
       packet[0] = FIN_FLAG_ | OPCODE_CLOSE_
-      packet[1] = 2  // Size, not including 2-byte header.
-      BIG_ENDIAN.put_uint16 packet 2 status_code
+      packet[1] = MASKING_FLAG_ | 2  // Size, not including 6-byte header.
+      BIG_ENDIAN.put_uint16 packet 6 status_code
       catch: socket_.write packet  // Catch because the write end may already be closed.
     catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
     current_writer_ = null
