@@ -363,7 +363,7 @@ One of the requested extensions is not supported by the server.
 STATUS_NOT_EXTENDED ::= 510
 
 /**
-Status codes on a close packet on the Websockets protocol
+Status codes for close packets on the Websockets protocol.
 */
 STATUS_WEBSOCKET_NORMAL_CLOSURE       ::= 1000
 STATUS_WEBSOCKET_GOING_AWAY           ::= 1001
