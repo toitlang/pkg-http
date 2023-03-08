@@ -95,17 +95,17 @@ class WebSocket:
   */
   start_receiving -> WebSocketReader?:
     if current_reader_ != null:
-      close
+      close --status_code=STATUS_WEBSOCKET_UNEXPECTED_CONDITION
       throw "PREVIOUS_READER_NOT_FINISHED"
     fragment_reader := next_fragment_
     if fragment_reader == null: return null
     if fragment_reader.is_ping or fragment_reader.is_pong:
-      close
+      close --status_code=STATUS_WEBSOCKET_NOT_UNDERSTOOD  // Not yet implemented.
       throw "UNIMPLEMENTED_PING"
     if fragment_reader.is_close:
       return null
     if fragment_reader.is_continuation:
-      close
+      close --status_code=STATUS_WEBSOCKET_PROTOCOL_ERROR
       throw "PROTOCOL_ERROR"
     size := fragment_reader.size_
     current_reader_ = WebSocketReader.private_ this fragment_reader fragment_reader.is_text fragment_reader.size
@@ -113,6 +113,7 @@ class WebSocket:
 
   // Reads the header of the next fragment.
   next_fragment_ -> FragmentReader_?:
+    if socket_ == null: return null  // Closed.
     // Named block:
     get_more := :
       next := socket_.read
@@ -147,9 +148,27 @@ class WebSocket:
         masking_bytes = null
     result := FragmentReader_ this len pending_[0] --masking_bytes=masking_bytes
     if not result.is_ok_:
-      close
+      close --status_code=STATUS_WEBSOCKET_PROTOCOL_ERROR
       throw "PROTOCOL_ERROR"
+
     pending_ = pending_[header_size_needed..]
+
+    if result.is_close:
+      if result.size >= 2:
+        // Two-byte close reason code.
+        payload := #[]
+        while packet := result.read:
+          payload += packet
+        code := BIG_ENDIAN.uint16 payload 0
+        if code == STATUS_WEBSOCKET_NORMAL_CLOSURE or code == STATUS_WEBSOCKET_GOING_AWAY:
+          // One of the expected no-error codes.
+          current_reader_ = null
+          return null
+        throw "Peer closed with code $code"
+      // No code provided.  We treat this as a normal close.
+      current_reader_ = null
+      return null
+
     return result
 
   /**
@@ -192,13 +211,35 @@ class WebSocket:
     current_reader_ = null
 
   /**
-  Abruptly closes the WebSocket.
-  Does not send a close packet first.
+  Closes the websocket.
+  Call this if we do not wish to send or receive any more messages.
+    After calling this, you do not need to call $close_write.
+  May close abruptly in an unclean way.
+  If we are in a suitable place in the protocol, sends a close packet first.
   */
-  close:
+  close --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
+    close_write --status_code=STATUS_WEBSOCKET_NORMAL_CLOSURE
     socket_.close
-    current_writer_ = null
     current_reader_ = null
+
+  /**
+  Closes the websocket for writing.
+  Call this if we are done transmitting messages, but we may have a different
+    task still receiving messages on the connection.
+  If we are in a suitable place in the protocol, sends a close packet first.
+    Otherwise, it will close abruptly, without sending the packet.
+  Most peers will respond by closing the other direction.
+  */
+  close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
+    if current_writer_ == null:
+      // If we are not in the middle of a message, we can send a close packet.
+      packet := ByteArray 8
+      packet[0] = FIN_FLAG_ | OPCODE_CLOSE_
+      packet[1] = MASKING_FLAG_ | 2  // Size, not including 6-byte header.
+      BIG_ENDIAN.put_uint16 packet 6 status_code
+      catch: socket_.write packet  // Catch because the write end may already be closed.
+    catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
+    current_writer_ = null
 
   static add_client_upgrade_headers_ headers/Headers -> string:
     // The WebSocket nonce is not very important and does not need to be
@@ -328,10 +369,13 @@ class WebSocketWriter:
     if remaining_in_fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
     if owner_:
       if size_ == null:
+        // If size is null, we didn't know the size of the complete message ahead
+        // of time, which means we didn't set the fin flag on the last packet.  Send
+        // a zero length packet with a fin flag.
         header := ByteArray 2
         header[0] = FIN_FLAG_ | (fragment_sent_ ? OPCODE_CONTINUATION_ : OPCODE_BINARY_)
         owner_.write_ header
-      owner_.writer_close_ this
+      owner_.writer_close_ this  // Notify the websocket that we are done.
       owner_ = null
 
 /**
