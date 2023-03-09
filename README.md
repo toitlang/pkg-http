@@ -24,6 +24,8 @@ main:
   while chunk := response.body.read:
     data += chunk
   print data.to_string
+
+  client.close
 ```
 
 ### JSON Post request

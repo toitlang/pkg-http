@@ -15,6 +15,8 @@ main:
   while data := response.body.read:
     print data.to_string
 
+  client.close
+
 SERVER_CERT ::= x509.Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDkzCCAnugAwIBAgIUb3nSgGzXBdgsDhg8shods8EHszAwDQYJKoZIhvcNAQEL
