@@ -22,6 +22,14 @@ An HTTP v1.1 client.
 
 This class provides methods to fetch data from HTTP servers.
 
+When the client is no longer needed, resources should be freed up with the
+  $close method.  This is an API incompatibility with version one of the
+  package, which would automatically close the client after one request.
+  See the documentation of the constructor for details.
+
+This client has built-in websocket support.  The separate websockets package
+  should no longer be used.
+
 # Get
 Use the $get method to fetch data using a $GET request.
 

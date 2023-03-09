@@ -18,16 +18,21 @@ main:
   server.listen network 8080:: | request/http.RequestIncoming writer/http.ResponseWriter |
     if request.path == "/empty":
     else if request.path == "/json":
-      ITEMS.do:
-        writer.write
-          json.encode {
-            "item": it,
-          }
-        writer.write "\n"
+      writer.headers.set "Content-Type" "application/json"
+      writer.write
+        json.encode ITEMS
     else if request.path == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
+      writer.headers.set "Content-Type" "text/plain"
+      writer.write "hello\n"
     else if request.path == "/500":
+      writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
+      writer.write "hello\n"
+    else if request.path == "/599":
+      writer.headers.set "Content-Type" "text/plain"
+      writer.write_headers 599 --message="Dazed and confused"
+    writer.close
 
 // Self-signed certificate with "localhost" Common-Name.
 TLS_SERVER_CERT ::= tls.Certificate SERVER_CERT SERVER_KEY
