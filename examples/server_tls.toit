@@ -29,6 +29,9 @@ main:
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
       writer.write "hello\n"
+    else if request.path == "/599":
+      writer.headers.set "Content-Type" "text/plain"
+      writer.write_headers 599 --message="Dazed and confused"
     writer.close
 
 // Self-signed certificate with "localhost" Common-Name.

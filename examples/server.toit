@@ -19,8 +19,7 @@ main:
         json.encode ITEMS
     else if request.path == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
-      writer.headers.set "Content-Type" "text/plain"
-      writer.write "Going away\n"
+      writer.write_headers 200
     else if request.path == "/500":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
@@ -28,5 +27,4 @@ main:
     else if request.path == "/599":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 599 --message="Dazed and confused"
-      writer.write "Failure\n"
     writer.close
