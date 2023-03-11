@@ -63,6 +63,13 @@ jobs:
           ninja --version
           cmake --version
 
+      - name: Start httpbin - Linux
+        if: runner.os == 'Linux'
+        run: |
+          docker pull kennethreitz/httpbin
+          docker run -d -p 8765:80 kennethreitz/httpbin
+          docker ps
+
       - uses: suisei-cn/actions-download-file@v1
         name: Download Toit
         with:
@@ -80,6 +87,12 @@ jobs:
         run: |
           make rebuild-cmake
           cmake "-DTOIT_EXEC=$TOIT_EXEC" "-DTPKG_EXEC=$TPKG_EXEC" build
+
+      - name: Enable httpbin tests - Linux
+        if: runner.os == 'Linux'
+        run: |
+          docker ps
+          cmake -DENABLE_HTTPBIN_TESTS=ON -DUSE_HTTPBIN_DOCKER=ON build
 
       - name: Install packages
         run: |
