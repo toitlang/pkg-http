@@ -440,11 +440,16 @@ class Client:
       --content_type/string?
       --follow_redirects/bool:
 
-    if content_type and headers.get "Content-Type": throw "INVALID_ARGUMENT"
-    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
-    if headers.get "Host": throw "INVALID_ARGUMENT"
+    has_content_header := false
+    if content_type and headers.single "Content-Type":
+      content_type_entries := headers.get "Content-Type"
+      if content_type_entries.size != 1 or content_type_entries[0] != content_type:
+        throw "INVALID_ARGUMENT"
+      has_content_header = true
+    if headers.single "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.single "Host": throw "INVALID_ARGUMENT"
 
-    if content_type:
+    if content_type and not has_content_header:
       headers = headers.copy
       headers.set "Content-Type" content_type
 
