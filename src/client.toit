@@ -440,18 +440,18 @@ class Client:
       --content_type/string?
       --follow_redirects/bool:
 
-    has_content_header := false
-    if content_type and headers.single "Content-Type":
-      content_type_entries := headers.get "Content-Type"
-      if content_type_entries.size != 1 or content_type_entries[0] != content_type:
-        throw "INVALID_ARGUMENT"
-      has_content_header = true
     if headers.single "Transfer-Encoding": throw "INVALID_ARGUMENT"
     if headers.single "Host": throw "INVALID_ARGUMENT"
 
-    if content_type and not has_content_header:
-      headers = headers.copy
-      headers.set "Content-Type" content_type
+    if content_type:
+      existing_content_type := headers.single "Content-Type"
+      if existing_content_type:
+        // Keep the existing entry, but check that the content is the same.
+        if existing_content_type.to_ascii_lower != content_type.to_ascii_lower:
+          throw "INVALID_ARGUMENT"
+      else:
+        headers = headers.copy
+        headers.set "Content-Type" content_type
 
     MAX_REDIRECTS.repeat:
       response := null
