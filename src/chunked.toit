@@ -71,14 +71,16 @@ class ChunkedWriter implements BodyWriter:
 
   constructor .connection_ .writer_:
 
-  write data -> none:
-    if data.size == 0: return
-    write_header_ data.size
-    writer_.write data
+  write data -> int:
+    size := data.size
+    if size == 0: return 0
+    write_header_ size
+    writer_.write data  // Always writes all data.
     // Once we've sent the data, the other side might conclude that
     // they have gotten everything they need, so we don't want to throw
     // an exception on writing the final CRLF.
     catch: writer_.write CRLF_
+    return size
 
   close -> none:
     if not connection_: return

@@ -285,7 +285,7 @@ class UnknownContentLengthReader implements reader.Reader:
     return data
 
 interface BodyWriter:
-  write data -> none
+  write data -> int
   is_done -> bool
   close -> none
 
@@ -299,9 +299,11 @@ class ContentLengthWriter implements BodyWriter:
   is_done -> bool:
     return remaining_length_ == 0
 
-  write data -> none:
-    writer_.write data
-    remaining_length_ -= data.size
+  write data -> int:
+    size := data.size
+    writer_.write data  // Always writes all data.
+    remaining_length_ -= size
+    return size
 
   close -> none:
     if connection_:
