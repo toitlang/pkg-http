@@ -19,9 +19,6 @@ PATH_POST     ::= "/redirect-to?url=$(url.encode "http://$HOST_PORT/post")&statu
 PATH_POST_TLS ::= "/redirect-to?url=$(url.encode "https://$HOST_PORT/post")&status_code=302"
 PATH_POST303  ::= "/redirect-to?url=$(url.encode "http://$HOST_PORT/get")&status_code=303"
 
-drain response/http.Response:
-  while response.body.read: null
-
 check_get_response response/http.Response --scheme:
   data := #[]
   while chunk := response.body.read:
@@ -42,7 +39,7 @@ test_get network/net.Interface --do_drain/bool=false:
   response = client.get HOST --port=PORT PATH_GET --no-follow_redirects
   expect_equals 302 response.status_code
   if do_drain:
-    drain response
+    response.drain
   client.close
 
 test_post network/net.Interface --do_drain/bool=false:
@@ -71,7 +68,7 @@ test_post network/net.Interface --do_drain/bool=false:
   response = client.post --host=HOST --port=PORT --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 302 response.status_code
   if do_drain:
-    drain response
+    response.drain
 
   response = client.post_json --host=HOST --port=PORT --path=PATH_POST "hello"
   data = #[]
@@ -84,7 +81,7 @@ test_post network/net.Interface --do_drain/bool=false:
   response = client.post_json --host=HOST --port=PORT --path=PATH_POST "hello" --no-follow_redirects
   expect_equals 302 response.status_code
   if do_drain:
-    drain response
+    response.drain
 
   response = client.post_form --host=HOST --port=PORT --path=PATH_POST { "toit": "hello" }
   data = #[]
@@ -97,7 +94,7 @@ test_post network/net.Interface --do_drain/bool=false:
   response = client.post_form --host=HOST --port=PORT --path=PATH_POST { "toit": "hello" } --no-follow_redirects
   expect_equals 302 response.status_code
   if do_drain:
-    drain response
+    response.drain
 
   // A post to a redirect 303 should become a GET.
   response = client.post --host=HOST --port=PORT --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o']
@@ -111,7 +108,7 @@ test_post network/net.Interface --do_drain/bool=false:
   response = client.post --host=HOST --port=PORT --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
   expect_equals 303 response.status_code
   if do_drain:
-    drain response
+    response.drain
 
   client.close
 
