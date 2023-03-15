@@ -147,7 +147,9 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    body_reader := body_reader_ headers --request=true
+    // If a client sends a request without a transfer encoding and
+    // without a content length, we treat it as empty content.
+    body_reader := body_reader_ headers --unknown_is_empty
 
     current_reader_ = body_reader
     return RequestIncoming.private_ this body_reader method path version headers
@@ -172,7 +174,18 @@ class Connection:
       if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
       headers := read_headers_
-      body_reader := body_reader_ headers --request=false
+      // If we read a '204 (No Content)' response, we treat it
+      // as empty, unless it explicitly comes with a transfer
+      // encoding or content length. The latter is in conflict
+      // with RFC 9110 that states:
+      //
+      //      A 204 response is terminated by the end of the
+      //      header section; it cannot contain content or
+      //      trailers.
+      //
+      // Skipping such content or trailers allows re-using
+      // the connection instead of forcing us to close it.
+      body_reader := body_reader_ headers --unknown_is_empty=(status_code == 204)
 
       current_reader_ = body_reader
       return Response this version status_code status_message headers body_reader
@@ -181,7 +194,7 @@ class Connection:
       if not current_reader_:
         close
 
-  body_reader_ headers/Headers --request/bool -> reader.Reader:
+  body_reader_ headers/Headers --unknown_is_empty/bool -> reader.Reader:
     content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
@@ -196,9 +209,7 @@ class Connection:
       else if not headers.matches T_E "identity":
         throw "No support for $T_E: $(headers.single T_E)"
 
-    if request:
-      // For requests (we are the server) a missing Content-Length means a zero
-      // length body.
+    if unknown_is_empty:
       return ContentLengthReader this reader_ 0
 
     // If there is no Content-Length field (and we are not using chunked
