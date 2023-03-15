@@ -125,7 +125,7 @@ main args:
     else:
       HOST = host_port
 
-  if HOST = "httpbin.org":
+  if HOST == "httpbin.org":
     print "May timeout if httpbin is overloaded."
 
   network := net.open
