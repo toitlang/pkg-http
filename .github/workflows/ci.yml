@@ -94,6 +94,13 @@ jobs:
           docker ps
           cmake -DENABLE_HTTPBIN_TESTS=ON -DUSE_HTTPBIN_DOCKER=ON build
 
+      # httpbin.org is overloaded at the moment, so if we are not running our
+      # own in Docker, don't run it at all.
+      - name: Enable httpbin tests - non-Linux
+        if: runner.os != 'Linux'
+        run: |
+          cmake -DENABLE_HTTPBIN_TESTS=OFF build
+
       - name: Install packages
         run: |
           make install-pkgs
