@@ -49,6 +49,10 @@ run_client network port/int -> none:
     expect_equals connection client.connection_  // Check we reused the connection.
     expect_equals 404 response.status_code
 
+    response = client.get --uri="http://localhost:$port/204_no_content"
+    expect_equals 204 response.status_code
+    expect_equals "Nothing more to say" (response.headers.single "X-Toit-Message")
+
     response = client.get --host="localhost" --port=port --path="/foo.json"
     expect_equals connection client.connection_  // Check we reused the connection.
 
@@ -135,6 +139,9 @@ listen server server_socket my_port other_port:
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/foo.json"
     else if request.path == "/redirect_loop":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_loop"
+    else if request.path == "/204_no_content":
+      response_writer.headers.set "X-Toit-Message" "Nothing more to say"
+      response_writer.write_headers http.STATUS_NO_CONTENT
     else if request.path == "/500_because_nothing_written":
       // Forget to write anything - the server should send 500 - Internal error.
     else if request.path == "/500_because_throw_before_headers":

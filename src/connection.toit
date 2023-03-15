@@ -7,11 +7,13 @@ import writer
 import net
 import net.tcp
 
+import .chunked
+import .client
+import .headers
 import .request
 import .response
-import .chunked
-import .headers
-import .client
+import .status_codes
+
 
 class Connection:
   socket_/tcp.Socket? := null
@@ -149,7 +151,11 @@ class Connection:
     headers := read_headers_
     body_reader := body_reader_ headers --request=true
 
-    current_reader_ = body_reader
+    if body_reader is ContentLengthReader and (body_reader as ContentLengthReader).size == 0:
+      current_reader_ = null  // Mark it as already finished, since it is zero length.
+    else:
+      current_reader_ = body_reader
+
     return RequestIncoming.private_ this body_reader method path version headers
 
   detach -> DetachedSocket_:
@@ -172,7 +178,7 @@ class Connection:
       if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
       headers := read_headers_
-      body_reader := body_reader_ headers --request=false
+      body_reader := body_reader_ headers --request=false --status_code=status_code
 
       current_reader_ = body_reader
       return Response this version status_code status_message headers body_reader
@@ -181,7 +187,7 @@ class Connection:
       if not current_reader_:
         close
 
-  body_reader_ headers/Headers --request/bool -> reader.Reader:
+  body_reader_ headers/Headers --request/bool --status_code/int?=null -> reader.Reader:
     content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
@@ -196,9 +202,10 @@ class Connection:
       else if not headers.matches T_E "identity":
         throw "No support for $T_E: $(headers.single T_E)"
 
-    if request:
+    if request or status_code == STATUS_NO_CONTENT:
       // For requests (we are the server) a missing Content-Length means a zero
-      // length body.
+      // length body.  We also do this as client if the server has explicitly
+      // stated that there is no content.
       return ContentLengthReader this reader_ 0
 
     // If there is no Content-Length field (and we are not using chunked

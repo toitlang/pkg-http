@@ -147,7 +147,8 @@ class ResponseWriter:
 
   write_headers status_code/int --message/string?=null:
     if body_writer_: throw "headers already written"
-    write_headers_ status_code --message=message --has_body=true
+    has_body := status_code != STATUS_NO_CONTENT
+    write_headers_ status_code --message=message --has_body=has_body
 
   write data:
     if data.size > 0: has_data_ = true
