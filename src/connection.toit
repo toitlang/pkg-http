@@ -122,7 +122,7 @@ class Connection:
       writer_.write "Transfer-Encoding: chunked\r\n"
     writer_.write "\r\n"
 
-    socket_.no_delay =  true
+    socket_.no_delay = true
     return body_writer
 
   // Gets the next request from the client. If the client closes the
