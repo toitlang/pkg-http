@@ -764,16 +764,22 @@ class ParsedUri_:
     return default_port == port ? host : "$host:$port"
 
   constructor.parse_ uri/string --default_scheme/string?:
-    colon := uri.index_of ":/"
-    scheme/string? := default_scheme
+    // We recognize a scheme if it's either one of the four we support or if it's
+    // followed by colon-slash.  This lets us recognize localhost:1080.
+    colon := uri.index_of ":"
+    scheme/string? := null
     // Recognize a prefix like "https:/"
-    if colon > 0:
+    if 0 < colon < uri.size - 1:
       up_to_colon := uri[..colon]
       if is_alpha_ up_to_colon:
-        scheme = to_ascii_lower_ up_to_colon
-        uri = uri[colon + 1..]
+        lower := to_ascii_lower_ up_to_colon
+        if SCHEMES_.contains lower or uri[colon + 1] == '/':
+          scheme = lower
+          uri = uri[colon + 1..]
+    if not scheme: scheme = default_scheme
+    if not scheme: throw "Missing scheme in '$uri'"
+    if not SCHEMES_.contains scheme: throw "Unknown scheme: '$scheme'"
     if uri.contains "/" and not uri.starts_with "//": throw "URI_PARSING_ERROR"
-    if not scheme or not SCHEMES_.contains scheme: throw "Unknown scheme: $scheme"
     if uri.starts_with "//": uri = uri[2..]
     host := null
     port := null

@@ -13,6 +13,33 @@ main:
   expect_equals "/watch?v=2HJxya0CWco" parts.path
   expect_equals "t=0m6s"               parts.fragment
 
+  parts = http.ParsedUri_.parse_ "https://www.youtube.com/watch?v=2HJxya0CWco"
+  expect_equals "https"                parts.scheme
+  expect_equals "www.youtube.com"      parts.host
+  expect_equals 443                    parts.port
+  expect_equals "/watch?v=2HJxya0CWco" parts.path
+
+  parts = http.ParsedUri_.parse_ "https://www.youtube.com:443/watch?v=2:HJxya0CWco"
+  expect_equals "https"                 parts.scheme
+  expect_equals "www.youtube.com"       parts.host
+  expect_equals 443                     parts.port
+  expect_equals "/watch?v=2:HJxya0CWco" parts.path
+
+  YT ::= "www.youtube.com:443/watch/?v=10&encoding=json"
+  parts = http.ParsedUri_.parse_ "https://$YT"
+  expect_equals "https"                 parts.scheme
+  expect_equals "www.youtube.com"       parts.host
+  expect_equals 443                     parts.port
+  expect_equals "/watch/?v=10&encoding=json" parts.path
+
+  expect_throw "Missing scheme in '$YT'": http.ParsedUri_.parse_ YT
+  expect_throw "Missing scheme in '/$YT'": http.ParsedUri_.parse_ "/$YT"
+  expect_throw "Missing scheme in '//$YT'": http.ParsedUri_.parse_ "//$YT"
+  expect_throw "Missing scheme in 'http/$YT'": http.ParsedUri_.parse_ "http/$YT"
+
+  expect_throw "Missing scheme in '192.168.86.26:55321/auth'":
+    http.ParsedUri_.parse_ "192.168.86.26:55321/auth"
+
   http.ParsedUri_.parse_                                   "https://www.youtube.com/watch?v=2HJxya0CWco"
   expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.youtube.com-/watch?v=2HJxya0CWco"
   expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www.youtube.-com/watch?v=2HJxya0CWco"
@@ -25,9 +52,10 @@ main:
   expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www..y'utube.com/watch?v=2HJxya0CWco"
   expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "https://www..yøutube.com/watch?v=2HJxya0CWco"
 
-  expect_throw "Unknown scheme: fisk": http.ParsedUri_.parse_ "fisk://fishing.net/"
-  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "/a/relative/url"
+  expect_throw "Unknown scheme: 'fisk'": http.ParsedUri_.parse_ "fisk://fishing.net/"
+  expect_throw "Missing scheme in '/a/relative/url'": http.ParsedUri_.parse_ "/a/relative/url"
   expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "http:/127.0.0.1/path"
+  expect_throw "URI_PARSING_ERROR": http.ParsedUri_.parse_ "http:127.0.0.1/path"
 
   parts = http.ParsedUri_.parse_ "wss://api.example.com./end-point"
   expect_equals "wss"               parts.scheme
@@ -57,6 +85,18 @@ main:
   expect_equals "/"         parts.path
   expect_equals null        parts.fragment
   expect                    parts.use_tls
+
+  parts = http.ParsedUri_.parse_ "http:1080"
+  expect_equals "http"      parts.scheme
+  expect_equals "1080"      parts.host
+  expect_equals "/"         parts.path
+  expect_equals null        parts.fragment
+
+  parts = http.ParsedUri_.parse_ "HTTP:1080"
+  expect_equals "http"      parts.scheme
+  expect_equals "1080"      parts.host
+  expect_equals "/"         parts.path
+  expect_equals null        parts.fragment
 
   parts = http.ParsedUri_.parse_ "127.0.0.1:1080" --default_scheme="https"
   expect_equals "https"     parts.scheme
