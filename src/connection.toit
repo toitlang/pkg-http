@@ -39,10 +39,10 @@ class Connection:
     if current_reader_ or current_writer_: throw "Previous request not completed"
     return RequestOutgoing.private_ this method path headers
 
-  is_open_:
+  is_open_ -> bool:
     return socket_ != null
 
-  close:
+  close -> none:
     if socket_:
       socket_.close
       if current_writer_:
@@ -80,7 +80,7 @@ class Connection:
     completely closed.  Otherwise the connection will be closed on completing
     the current read.
   */
-  close_write:
+  close_write -> none:
     if not current_reader_:
       close
     else if socket_:
@@ -112,8 +112,7 @@ class Connection:
     // Set this before doing blocking operations on the socket, so that we
     // don't let another task start another request on the same connection.
     current_writer_ = body_writer
-
-    socket_.set_no_delay false
+    socket_.no_delay = false
 
     writer_.write status
     headers.write_to writer_
@@ -123,7 +122,7 @@ class Connection:
       writer_.write "Transfer-Encoding: chunked\r\n"
     writer_.write "\r\n"
 
-    socket_.set_no_delay true
+    socket_.no_delay = true
     return body_writer
 
   // Gets the next request from the client. If the client closes the
@@ -286,9 +285,9 @@ class UnknownContentLengthReader implements reader.Reader:
     return data
 
 interface BodyWriter:
-  write data
+  write data -> int
   is_done -> bool
-  close
+  close -> none
 
 class ContentLengthWriter implements BodyWriter:
   connection_/Connection? := null
@@ -300,11 +299,13 @@ class ContentLengthWriter implements BodyWriter:
   is_done -> bool:
     return remaining_length_ == 0
 
-  write data:
-    writer_.write data
-    remaining_length_ -= data.size
+  write data -> int:
+    size := data.size
+    writer_.write data  // Always writes all data.
+    remaining_length_ -= size
+    return size
 
-  close:
+  close -> none:
     if connection_:
       connection_.writing_done_ this
     connection_ = null
@@ -317,27 +318,19 @@ A $tcp.Socket doesn't support ungetting data that was already read for it, so we
 class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket
   buffered_/ByteArray? := null
-
-  // TODO(kasper): For now, it is necessary to keep track
-  // of whether or not the TCP_NODELAY option has been enabled.
-  // This will go away with an upgraded Toit SDK where the
-  // underlying tcp.Socket support the $no_delay getter.
-  no_delay_/bool? := null
-
   constructor .socket_ buffered_:
 
-  // TODO(kasper): Remove this. Here for backwards compatibility.
-  set_no_delay enabled/bool: socket_.set_no_delay enabled
+  local_address -> net.SocketAddress:
+    return socket_.local_address
+  peer_address -> net.SocketAddress:
+    return socket_.peer_address
+  mtu -> int:
+    return socket_.mtu
 
   no_delay -> bool:
-    if no_delay_ == null:
-      set_no_delay false
-      no_delay_ = false
-    return no_delay_
-
+    return socket_.no_delay
   no_delay= value/bool -> none:
-    set_no_delay value
-    no_delay_ = value
+    socket_.no_delay = value
 
   read -> ByteArray?:
     if result := buffered_:
@@ -346,12 +339,17 @@ class DetachedSocket_ implements tcp.Socket:
         return result
     return socket_.read
 
-  write data from=0 to=data.size: return socket_.write data from to
-  close_write: return socket_.close_write
-  close: return socket_.close
-  local_address -> net.SocketAddress: return socket_.local_address
-  peer_address -> net.SocketAddress: return socket_.peer_address
-  mtu -> int: return socket_.mtu
+  write data from/int=0 to/int=data.size -> int:
+    return socket_.write data from to
+
+  close_write -> none:
+    socket_.close_write
+  close -> none:
+    socket_.close
+
+  // TODO(kasper): Remove this. Here for backwards compatibility.
+  set_no_delay enabled/bool:
+    no_delay = enabled
 
 is_close_exception_ exception -> bool:
   return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
