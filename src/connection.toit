@@ -109,6 +109,8 @@ class Connection:
       if not headers.matches "Connection" "upgrade":
         headers.set "Content-Length" "0"
 
+    // Set this before doing blocking operations on the socket, so that we
+    // don't let another task start another request on the same connection.
     current_writer_ = body_writer
 
     socket_.set_no_delay false
