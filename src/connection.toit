@@ -109,6 +109,8 @@ class Connection:
       if not headers.matches "Connection" "upgrade":
         headers.set "Content-Length" "0"
 
+    current_writer_ = body_writer
+
     socket_.set_no_delay false
 
     writer_.write status
@@ -120,7 +122,6 @@ class Connection:
     writer_.write "\r\n"
 
     socket_.set_no_delay true
-    current_writer_ = body_writer
     return body_writer
 
   // Gets the next request from the client. If the client closes the
