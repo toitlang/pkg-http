@@ -120,6 +120,9 @@ class Server:
         handler.call request writer
       finally: | is_exception exception |
         // Drain unread content to allow the connection to be reused.
+        // Eg if the handler threw an exception on a POST, we will drain the
+        // data the client was posting, and respond with a 500, so the connection
+        // does not need to be closed.
         if writer.detached_: return true
         if is_exception:
           writer.close_on_exception_ "Internal Server error - $exception.value.stringify"
