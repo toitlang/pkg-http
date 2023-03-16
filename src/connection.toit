@@ -224,6 +224,7 @@ class Connection:
     headers := Headers
 
     while (reader_.byte 0) != '\r':
+
       if is_whitespace_ (reader_.byte 0):
         // Line folded headers are deprecated in RFC 7230 and we don't support
         // them.
