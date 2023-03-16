@@ -149,13 +149,9 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    body_reader := body_reader_ headers --request=true
+    current_reader_ = body_reader_ headers --request=true
 
-    if body_reader is ContentLengthReader and (body_reader as ContentLengthReader).size == 0:
-      current_reader_ = null  // Mark it as already finished, since it is zero length.
-    else:
-      current_reader_ = body_reader
-
+    body_reader := current_reader_ or ContentLengthReader this reader_ 0
     return RequestIncoming.private_ this body_reader method path version headers
 
   detach -> DetachedSocket_:
@@ -168,6 +164,7 @@ class Connection:
 
   read_response -> Response:
     if current_reader_: throw "Previous response not yet finished"
+    headers := null
     try:
       version := reader_.read_string (reader_.index_of_or_throw ' ')
       reader_.skip 1
@@ -177,20 +174,21 @@ class Connection:
       reader_.skip 1
       if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
-      headers := read_headers_
-      body_reader := body_reader_ headers --request=false --status_code=status_code
+      headers = read_headers_
+      current_reader_ = body_reader_ headers --request=false --status_code=status_code
 
-      current_reader_ = body_reader
+      body_reader := current_reader_ or ContentLengthReader this reader_ 0
       return Response this version status_code status_message headers body_reader
 
     finally:
-      if not current_reader_:
+      if not headers:
         close
 
-  body_reader_ headers/Headers --request/bool --status_code/int?=null -> reader.Reader:
+  body_reader_ headers/Headers --request/bool --status_code/int?=null -> reader.Reader?:
     content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
+      if length == 0: return null  // No read is needed to drain this response.
       return ContentLengthReader this reader_ length
 
     // The only transfer encodings we support are 'identity' and 'chunked',
@@ -205,8 +203,9 @@ class Connection:
     if request or status_code == STATUS_NO_CONTENT:
       // For requests (we are the server) a missing Content-Length means a zero
       // length body.  We also do this as client if the server has explicitly
-      // stated that there is no content.
-      return ContentLengthReader this reader_ 0
+      // stated that there is no content.  We return a null reader, which means
+      // the user does not need to drain the response.
+      return null
 
     // If there is no Content-Length field (and we are not using chunked
     // transfer-encoding) we just don't know the size of the transfer.
