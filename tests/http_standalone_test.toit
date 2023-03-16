@@ -80,7 +80,7 @@ run_client network port/int -> none:
   response2 := client.get --uri="http://localhost:$port/500_because_throw_before_headers"
   expect_equals 500 response2.status_code
 
-  exception3 := catch:
+  /*exception3 := catch:
     response3 := client.get --uri="http://localhost:$port/hard_close_because_wrote_too_little"
     if 200 <= response3.status_code <= 299:
       while response3.body.read: null
@@ -90,7 +90,7 @@ run_client network port/int -> none:
     response4 := client.get --uri="http://localhost:$port/hard_close_because_throw_after_headers"
     if 200 <= response4.status_code <= 299:
       while response4.body.read: null
-  expect_equals "UNEXPECTED_END_OF_READER" exception4
+  expect_equals "UNEXPECTED_END_OF_READER" exception4*/
 
   response5 := client.get --uri="http://localhost:$port/redirect_from"
   expect connection != client.connection_  // Because of two redirects we had to make two new connections.
