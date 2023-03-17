@@ -63,24 +63,24 @@ run_client network port/int -> none:
       crock += data
     json.decode crock
 
-  /*response := client.get --uri="http://localhost:$port/redirect_back"
+  response := client.get --uri="http://localhost:$port/redirect_back"
   expect connection != client.connection_  // Because of the redirect we had to make a new connection.
   expect_equals "application/json"
       response.headers.single "Content-Type"
   crock := #[]
   while data := response.body.read:
     crock += data
-  json.decode crock*/
+  json.decode crock
 
-  //expect_throw "Too many redirects": client.get --uri="http://localhost:$port/redirect_loop"
+  expect_throw "Too many redirects": client.get --uri="http://localhost:$port/redirect_loop"
 
-  response := client.get --uri="http://localhost:$port/500_because_nothing_written"
+  response = client.get --uri="http://localhost:$port/500_because_nothing_written"
   expect_equals 500 response.status_code
 
   response2 := client.get --uri="http://localhost:$port/500_because_throw_before_headers"
   expect_equals 500 response2.status_code
 
-  /*exception3 := catch:
+  exception3 := catch:
     response3 := client.get --uri="http://localhost:$port/hard_close_because_wrote_too_little"
     if 200 <= response3.status_code <= 299:
       while response3.body.read: null
@@ -90,7 +90,7 @@ run_client network port/int -> none:
     response4 := client.get --uri="http://localhost:$port/hard_close_because_throw_after_headers"
     if 200 <= response4.status_code <= 299:
       while response4.body.read: null
-  expect_equals "UNEXPECTED_END_OF_READER" exception4*/
+  expect_equals "UNEXPECTED_END_OF_READER" exception4
 
   response5 := client.get --uri="http://localhost:$port/redirect_from"
   expect connection != client.connection_  // Because of two redirects we had to make two new connections.
