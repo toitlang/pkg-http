@@ -106,26 +106,33 @@ class Server:
     response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
     return WebSocket response_writer.detach --no-client
 
+  // Returns true if the connection was detached, false if it was closed.
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     if call_in_finalizer_: connection.call_in_finalizer_ = call_in_finalizer_
     while true:
       request := null
       with_timeout read_timeout:
         request = connection.read_request
-      if not request: return false
+      if not request: return false  // Timed out waiting for request from client.
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
       writer ::= ResponseWriter connection request request_logger
-      try:
-        handler.call request writer
-      finally: | is_exception exception |
-        // Drain unread content to allow the connection to be reused.
-        if writer.detached_: return true
-        if is_exception:
-          writer.close_on_exception_ "Internal Server error - $exception.value.stringify"
-        else:
-          request.drain
-          writer.close
+      unwind_block := : | exception |
+        // If there's an error we can either send a 500 error message or close
+        // the connection.  This depends on whether we had already sent the
+        // headers - can't send a 500 if we already sent a success header.
+        closed := writer.close_on_exception_ "Internal Server error - $exception"
+        closed   // Unwind if the connection is dead.
+      error := catch --trace --unwind=unwind_block:
+        handler.call request writer  // Calls the block passed to listen.
+      if writer.detached_: return true
+      if foo := request.body.read:
+        // The request (eg. a POST request) was not fully read - should have
+        // been closed and return null from read.
+        closed := writer.close_on_exception_ "Internal Server error - request not fully read"
+        assert: closed
+        throw "request not fully read: $request.path"
+      writer.close
 
 class ResponseWriter:
   static VERSION ::= "HTTP/1.1"
@@ -136,7 +143,6 @@ class ResponseWriter:
   headers_/Headers
   body_writer_/BodyWriter? := null
   detached_/bool := false
-  has_data_/bool := false
 
   constructor .connection_ .request_ .logger_:
     headers_ = Headers
@@ -151,7 +157,6 @@ class ResponseWriter:
     write_headers_ status_code --message=message --has_body=has_body
 
   write data:
-    if data.size > 0: has_data_ = true
     write_headers_ STATUS_OK --message=null --has_body=true
     body_writer_.write data
 
@@ -171,33 +176,42 @@ class ResponseWriter:
     else:
       write_headers_ status_code --message=message --has_body=false
 
-  close_on_exception_ message/string -> none:
+  // Returns true if the connection was closed due to an error.
+  close_on_exception_ message/string -> bool:
+    logger_.info message
     if body_writer_:
       // We already sent a good response code, but then something went
       // wrong.  Hard close (RST) the connection to signal to the other end
       // that we failed.
       connection_.close
       connection_ = null
+      return true
     else:
       // We don't have a body writer, so perhaps we didn't send a response
       // yet.  Send a 500 to indicate an internal server error.
       write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=message --has_body=false
-    logger_.info message
+      return false
 
-  close:
+  // Close the response.  We call this automatically after the block if the
+  // user's router did not call it.  Returns true if the connection was closed
+  // due to an error.
+  close -> bool:
     if body_writer_:
-      if not body_writer_.is_done:
+      too_little := not body_writer_.is_done
+      body_writer_.close
+      // that something went wrong in the user's code.
+      if too_little:
         // This is typically the case if the user's code set a Content-Length
         // header, but then didn't write enough data.
-        close_on_exception_ "Not enough data produced by server"
+        // Will hard close the connection and return true:
+        return close_on_exception_ "Not enough data produced by server"
     else:
-      assert: not has_data_
       // Nothing was written, yet we are already closing.  This indicates
-      // that something went wrong in the user's code.
-      // We return a 500 error code and log the issue.
+      // We return a 500 error code and log the issue.  We don't need to close
+      // the connection.
       write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=null --has_body=false
       logger_.info "Returned from router without any data for the client"
-    body_writer_.close
+    return false
 
   detach -> tcp.Socket:
     detached_ = true

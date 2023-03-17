@@ -38,7 +38,7 @@ class Connection:
     add_finalizer this:: this.finalize_
 
   new_request method/string path/string headers/Headers -> RequestOutgoing:
-    if current_reader_ or current_writer_: throw "Previous request not completed"
+    if current_reader_ or current_writer_: throw "Previous request not completed $(current_reader_ ? "cr" : "") $(current_writer_ ? "cw" : "")"
     return RequestOutgoing.private_ this method path headers
 
   is_open_:
@@ -93,7 +93,7 @@ class Connection:
       status/string headers/Headers
       --is_client_request/bool
       --has_body/bool:
-    if current_writer_: throw "Previous request not completed"
+    if current_writer_: throw "Previous request not completed (cw)"
     body_writer/BodyWriter := ?
     needs_to_write_chunked_header := false
 
@@ -113,7 +113,7 @@ class Connection:
 
     // Set this before doing blocking operations on the socket, so that we
     // don't let another task start another request on the same connection.
-    current_writer_ = body_writer
+    if has_body: current_writer_ = body_writer
 
     socket_.set_no_delay false
 
