@@ -38,7 +38,7 @@ class Connection:
     add_finalizer this:: this.finalize_
 
   new_request method/string path/string headers/Headers -> RequestOutgoing:
-    if current_reader_ or current_writer_: throw "Previous request not completed $(current_reader_ ? "cr" : "") $(current_writer_ ? "cw" : "")"
+    if current_reader_ or current_writer_: throw "Previous request not completed"
     return RequestOutgoing.private_ this method path headers
 
   is_open_:
@@ -93,7 +93,7 @@ class Connection:
       status/string headers/Headers
       --is_client_request/bool
       --has_body/bool:
-    if current_writer_: throw "Previous request not completed (cw)"
+    if current_writer_: throw "Previous request not completed"
     body_writer/BodyWriter := ?
     needs_to_write_chunked_header := false
 
@@ -133,7 +133,7 @@ class Connection:
   read_request -> RequestIncoming?:
     // In theory HTTP/1.1 can support pipelining, but it causes issues
     // with many servers, so nobody uses it.
-    if current_reader_: throw "Previous response not yet finished"
+    if current_reader_: throw "Previous response not completed"
     if not socket_: return null
 
     if not reader_.can_ensure 1:
@@ -163,7 +163,7 @@ class Connection:
     return DetachedSocket_ socket buffered
 
   read_response -> Response:
-    if current_reader_: throw "Previous response not yet finished"
+    if current_reader_: throw "Previous response not completed"
     headers := null
     try:
       version := reader_.read_string (reader_.index_of_or_throw ' ')
