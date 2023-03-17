@@ -4,6 +4,7 @@
 
 import bytes
 import encoding.json
+import log
 import net
 import net.tcp
 import reader
@@ -82,6 +83,7 @@ class Client:
 
   interface_/tcp.Interface
 
+  logger_/log.Logger
   use_tls_by_default_ ::= false
   certificate_/tls.Certificate? ::= null
   server_name_/string? ::= null
@@ -107,7 +109,9 @@ class Client:
   Use `net.open` to obtain an interface.
   */
   constructor .interface_
-      --root_certificates/List=[]:
+      --root_certificates/List=[]
+      --logger/log.Logger?=log.default:
+    logger_ = logger
     root_certificates_ = root_certificates
     add_finalizer this:: this.finalize_
 
@@ -127,7 +131,9 @@ class Client:
   constructor.tls .interface_
       --root_certificates/List=[]
       --server_name/string?=null
-      --certificate/tls.Certificate?=null:
+      --certificate/tls.Certificate?=null
+      --logger/log.Logger?=log.default:
+    logger_ = logger
     use_tls_by_default_ = true
     root_certificates_ = root_certificates
     server_name_ = server_name
@@ -644,6 +650,7 @@ class Client:
     connection_ = null
     // Try a second time with a fresh connection.  Since we just closed it,
     // this will create a new one.
+    logger_.info "Server lost interest: reconnecting to $location"
     ensure_connection_ location
     block.call connection_
 
