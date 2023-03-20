@@ -221,7 +221,7 @@ class Client:
       --headers/Headers?=null
       --follow_redirects/bool=true:
     parsed := parse_ uri --web_socket=false
-    return get_ parsed --follow_redirects=follow_redirects headers
+    return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
   Fetches data for $path on the given server ($host, $port) with a GET request.
@@ -242,7 +242,7 @@ class Client:
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    return get_ parsed --follow_redirects=follow_redirects headers
+    return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
