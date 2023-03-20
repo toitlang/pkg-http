@@ -97,6 +97,26 @@ run_client network port/int -> none:
     crock2 += data
   json.decode crock2
 
+  data := {"foo": "bar", "baz": [42, 103]}
+
+  response6 := client.post_json data --uri="http://localhost:$port/post_json"
+  expect_equals "application/json"
+      response6.headers.single "Content-Type"
+  crock3 := #[]
+  while byte_array := response6.body.read:
+    crock3 += byte_array
+  round_trip := json.decode crock3
+  expect_equals data["foo"] round_trip["foo"]
+  expect_equals data["baz"] round_trip["baz"]
+
+  response7 := client.post_json data --uri="http://localhost:$port/post_json_redirected_to_cat"
+  expect_equals "image/png"
+      response7.headers.single "Content-Type"
+  round_trip_cat := #[]
+  while byte_array := response7.body.read:
+    round_trip_cat += byte_array
+  expect_equals CAT round_trip_cat
+
   client.close
 
 start_server network -> int:
@@ -146,5 +166,13 @@ listen server server_socket my_port other_port:
       response_writer.headers.set "Content-Length" "2"
       response_writer.write "x"  // Only writes half the message.
       throw "** Expect a stack trace here caused by testing\n** that we close the connection on a throw"
+    else if request.path == "/post_json":
+      response_writer.headers.set "Content-Type" "application/json"
+      while data := request.body.read:
+        response_writer.write data
+    else if request.path == "/post_json_redirected_to_cat":
+      response_writer.headers.set "Content-Type" "application/json"
+      while data := request.body.read:
+      response_writer.redirect http.STATUS_SEE_OTHER "http://localhost:$my_port/cat.png"
     else:
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
