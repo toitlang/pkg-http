@@ -52,6 +52,8 @@ class Headers:
   /**
   Returns the stored values for the given $key.
 
+  Do not modify the return value.
+
   Returns null if the header is not present.
   */
   get key/string -> List?:
@@ -61,7 +63,7 @@ class Headers:
         return null
     if value is string:
       // Make it in to a one-element list in case the caller wants to modify
-      // the list.
+      // the list and to save time in case this method is called again.
       value = [value]
       headers_[key] = value
     return value
@@ -121,7 +123,10 @@ class Headers:
       if values is string:
         result[key] = values
       else:
-        result[key] = values.copy  // Values is a list.
+        if values.size == 1:
+          result[key] = values[0]
+        else:
+          result[key] = values.copy
     return Headers.private_ result
 
   // Camel-case a string.  Only works for ASCII in accordance with the HTTP
