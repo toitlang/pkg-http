@@ -202,7 +202,7 @@ class ResponseWriter:
       if too_little:
         // This is typically the case if the user's code set a Content-Length
         // header, but then didn't write enough data.
-        // Will hard close the connection and return true:
+        // Will hard close the connection.
         close_on_exception_ "Not enough data produced by server"
         return
     else:
