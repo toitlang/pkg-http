@@ -113,7 +113,7 @@ class Server:
       request := null
       with_timeout read_timeout:
         request = connection.read_request
-      if not request: return false  // Timed out waiting for request from client.
+      if not request: return false  // Client closed connection.
       request_logger := logger.with_tag "path" request.path
       request_logger.debug "incoming request"
       writer ::= ResponseWriter connection request request_logger
@@ -126,7 +126,7 @@ class Server:
       error := catch --trace --unwind=unwind_block:
         handler.call request writer  // Calls the block passed to listen.
       if writer.detached_: return true
-      if foo := request.body.read:
+      if request.body.read:
         // The request (eg. a POST request) was not fully read - should have
         // been closed and return null from read.
         closed := writer.close_on_exception_ "Internal Server error - request not fully read"
@@ -195,23 +195,22 @@ class ResponseWriter:
   // Close the response.  We call this automatically after the block if the
   // user's router did not call it.  Returns true if the connection was closed
   // due to an error.
-  close -> bool:
+  close -> none:
     if body_writer_:
       too_little := not body_writer_.is_done
       body_writer_.close
-      // that something went wrong in the user's code.
       if too_little:
         // This is typically the case if the user's code set a Content-Length
         // header, but then didn't write enough data.
         // Will hard close the connection and return true:
-        return close_on_exception_ "Not enough data produced by server"
+        close_on_exception_ "Not enough data produced by server"
+        return
     else:
       // Nothing was written, yet we are already closing.  This indicates
       // We return a 500 error code and log the issue.  We don't need to close
       // the connection.
       write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=null --has_body=false
       logger_.info "Returned from router without any data for the client"
-    return false
 
   detach -> tcp.Socket:
     detached_ = true

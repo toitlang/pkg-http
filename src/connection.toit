@@ -14,7 +14,6 @@ import .request
 import .response
 import .status_codes
 
-
 class Connection:
   socket_/tcp.Socket? := null
   host_/string?
