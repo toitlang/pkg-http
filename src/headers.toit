@@ -121,7 +121,7 @@ class Headers:
       if values is string:
         result[key] = values
       else:
-        result[key] = List values.size: values[it]
+        result[key] = values.copy  // Values is a list.
     return Headers.private_ result
 
   // Camel-case a string.  Only works for ASCII in accordance with the HTTP

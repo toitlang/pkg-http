@@ -35,7 +35,8 @@ class Connection:
     writer_ = writer.Writer socket_
     add_finalizer this:: this.finalize_
 
-  new_request method/string path/string headers/Headers -> RequestOutgoing:
+  new_request method/string path/string headers/Headers?=null -> RequestOutgoing:
+    headers = headers ? headers.copy : Headers
     if current_reader_ or current_writer_: throw "Previous request not completed"
     return RequestOutgoing.private_ this method path headers
 
