@@ -259,8 +259,8 @@ class Client:
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
   get host/string --port/int?=null path/string --headers/Headers?=null --follow_redirects/bool=true --use_tls/bool=use_tls_by_default_ -> Response:
-    if headers.contains "Transfer-Encoding": throw "INVALID_ARGUMENT"
-    if headers.contains "Host": throw "INVALID_ARGUMENT"
+    if headers and headers.contains "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers and headers.contains "Host": throw "INVALID_ARGUMENT"
 
     parsed := ParsedUri_.private_
         --scheme=(use_tls ? "https" : "http")
