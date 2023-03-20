@@ -145,10 +145,11 @@ class Client:
   */
   new_request method/string -> RequestOutgoing
       --uri/string
-      --headers/Headers=Headers:
+      --headers/Headers?=null:
     parsed := parse_ uri --web_socket=false
     ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := connection_.new_request method parsed.path
+        headers ? headers.copy : Headers
     return request
 
   /**
@@ -162,11 +163,12 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
     ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := connection_.new_request method parsed.path
+        headers ? headers.copy : Headers
     return request
 
   /**
@@ -185,7 +187,8 @@ class Client:
 
   If neither is specified then the default port is used.
   */
-  new_request method/string host/string --port/int?=null path/string --headers/Headers=Headers -> RequestOutgoing:
+  new_request method/string host/string --port/int?=null path/string -> RequestOutgoing
+      --headers/Headers?=null:
     parsed := ParsedUri_.private_
         --scheme=(use_tls_by_default_ ? "https" : "http")
         --host=host
@@ -194,7 +197,8 @@ class Client:
         --parse_port_in_host=true
     if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
     ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := connection_.new_request method parsed.path
+        headers ? headers.copy : Headers
     return request
 
   static starts_with_ignore_case_ str/string needle/string -> bool:
@@ -218,10 +222,11 @@ class Client:
   */
   get -> Response
       --uri/string
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true:
     parsed := parse_ uri --web_socket=false
-    return get_ parsed headers --follow_redirects=follow_redirects
+    return get_ parsed --follow_redirects=follow_redirects
+        headers ? headers.copy : Headers
 
   /**
   Fetches data for $path on the given server ($host, $port) with a GET request.
@@ -238,11 +243,12 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    return get_ parsed headers --follow_redirects=follow_redirects
+    return get_ parsed --follow_redirects=follow_redirects
+        headers ? headers.copy : Headers
 
   /**
   Fetches data at $path from the given server ($host, $port) using the $GET method.
@@ -258,9 +264,10 @@ class Client:
 
   If $follow_redirects is true, follows redirects (when the status code is 3xx).
   */
-  get host/string --port/int?=null path/string --headers/Headers=Headers --follow_redirects/bool=true --use_tls/bool=use_tls_by_default_ -> Response:
-    if headers.get "Transfer-Encoding": throw "INVALID_ARGUMENT"
-    if headers.get "Host": throw "INVALID_ARGUMENT"
+  get host/string --port/int?=null path/string --headers/Headers?=null --follow_redirects/bool=true --use_tls/bool=use_tls_by_default_ -> Response:
+    headers = headers ? headers.copy : Headers
+    if headers.contains "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.contains "Host": throw "INVALID_ARGUMENT"
 
     parsed := ParsedUri_.private_
         --scheme=(use_tls ? "https" : "http")
@@ -270,7 +277,7 @@ class Client:
         --parse_port_in_host
     return get_ parsed headers --follow_redirects=follow_redirects
 
-  get_ parsed/ParsedUri_ headers --follow_redirects/bool -> Response:
+  get_ parsed/ParsedUri_ headers/Headers --follow_redirects/bool -> Response:
     MAX_REDIRECTS.repeat:
       response/Response? := null
       try_to_reuse_ parsed: | connection |
@@ -302,9 +309,10 @@ class Client:
   */
   web_socket -> WebSocket
       --uri/string
-      --headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true:
     parsed := parse_ uri --web_socket
+    headers = headers ? headers.copy : Headers
     return web_socket_ parsed headers follow_redirects
 
   /**
@@ -321,10 +329,11 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket
+    headers = headers ? headers.copy : Headers
     return web_socket_ parsed headers follow_redirects
 
   web_socket_ parsed/ParsedUri_ headers/Headers follow_redirects/bool -> WebSocket:
@@ -372,10 +381,11 @@ class Client:
   */
   post data/ByteArray -> Response
       --uri/string
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --content_type/string?=null
       --follow_redirects/bool=true:
     parsed := parse_ uri --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
   /**
@@ -406,11 +416,12 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --content_type/string?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
   parse_ uri/string --web_socket/bool -> ParsedUri_:
@@ -484,11 +495,12 @@ class Client:
   */
   post_json object/any -> Response
       --uri/string
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
     parsed := parse_ uri --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
   /**
@@ -512,12 +524,13 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
     parsed := parse_ host port path use_tls --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
   /**
@@ -531,9 +544,10 @@ class Client:
   */
   post_form map/Map -> Response
       --uri/string
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true:
     parsed := parse_ uri --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
 
   /**
@@ -563,10 +577,11 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
-      --headers/Headers=Headers
+      --headers/Headers?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
+    headers = headers ? headers.copy : Headers
     return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
 
 
