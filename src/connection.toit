@@ -7,11 +7,12 @@ import writer
 import net
 import net.tcp
 
+import .chunked
+import .client
+import .headers
 import .request
 import .response
-import .chunked
-import .headers
-import .client
+import .status_codes
 
 class Connection:
   socket_/tcp.Socket? := null
@@ -111,7 +112,7 @@ class Connection:
 
     // Set this before doing blocking operations on the socket, so that we
     // don't let another task start another request on the same connection.
-    current_writer_ = body_writer
+    if has_body: current_writer_ = body_writer
     socket_.no_delay = false
 
     writer_.write status
@@ -130,7 +131,7 @@ class Connection:
   read_request -> RequestIncoming?:
     // In theory HTTP/1.1 can support pipelining, but it causes issues
     // with many servers, so nobody uses it.
-    if current_reader_: throw "Previous response not yet finished"
+    if current_reader_: throw "Previous response not completed"
     if not socket_: return null
 
     if not reader_.can_ensure 1:
@@ -146,9 +147,9 @@ class Connection:
     if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    body_reader := body_reader_ headers --request=true
+    current_reader_ = body_reader_ headers --request=true
 
-    current_reader_ = body_reader
+    body_reader := current_reader_ or ContentLengthReader this reader_ 0
     return RequestIncoming.private_ this body_reader method path version headers
 
   detach -> DetachedSocket_:
@@ -160,7 +161,8 @@ class Connection:
     return DetachedSocket_ socket buffered
 
   read_response -> Response:
-    if current_reader_: throw "Previous response not yet finished"
+    if current_reader_: throw "Previous response not completed"
+    headers := null
     try:
       version := reader_.read_string (reader_.index_of_or_throw ' ')
       reader_.skip 1
@@ -170,20 +172,21 @@ class Connection:
       reader_.skip 1
       if reader_.read_byte != '\n': throw "FORMAT_ERROR"
 
-      headers := read_headers_
-      body_reader := body_reader_ headers --request=false
+      headers = read_headers_
+      current_reader_ = body_reader_ headers --request=false --status_code=status_code
 
-      current_reader_ = body_reader
+      body_reader := current_reader_ or ContentLengthReader this reader_ 0
       return Response this version status_code status_message headers body_reader
 
     finally:
-      if not current_reader_:
+      if not headers:
         close
 
-  body_reader_ headers/Headers --request/bool -> reader.Reader:
+  body_reader_ headers/Headers --request/bool --status_code/int?=null -> reader.Reader?:
     content_length := headers.single "Content-Length"
     if content_length:
       length := int.parse content_length
+      if length == 0: return null  // No read is needed to drain this response.
       return ContentLengthReader this reader_ length
 
     // The only transfer encodings we support are 'identity' and 'chunked',
@@ -195,10 +198,12 @@ class Connection:
       else if not headers.matches T_E "identity":
         throw "No support for $T_E: $(headers.single T_E)"
 
-    if request:
+    if request or status_code == STATUS_NO_CONTENT:
       // For requests (we are the server) a missing Content-Length means a zero
-      // length body.
-      return ContentLengthReader this reader_ 0
+      // length body.  We also do this as client if the server has explicitly
+      // stated that there is no content.  We return a null reader, which means
+      // the user does not need to drain the response.
+      return null
 
     // If there is no Content-Length field (and we are not using chunked
     // transfer-encoding) we just don't know the size of the transfer.
