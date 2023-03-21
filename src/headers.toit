@@ -7,14 +7,20 @@ import bytes
 class Headers:
   headers_ := Map
 
+  constructor:
+
+  constructor.private_ .headers_:
+
   /**
   Returns a single string value for the header or null if the header is not
     present.  If there are multiple values, the last value is returned.
   */
   single key -> string?:
-    key = ascii_normalize_ key
-    if not headers_.contains key: return null
-    values := headers_[key]
+    values := headers_.get key --if_absent=:
+      key = ascii_normalize_ key
+      headers_.get key --if_absent=:
+        return null
+    if values is string: return values
     return values[values.size - 1]
 
   /**
@@ -46,10 +52,21 @@ class Headers:
   /**
   Returns the stored values for the given $key.
 
+  Do not modify the return value.
+
   Returns null if the header is not present.
   */
   get key/string -> List?:
-    return headers_.get (ascii_normalize_ key)
+    value := headers_.get key --if_absent=:
+      key = ascii_normalize_ key
+      headers_.get key --if_absent=:
+        return null
+    if value is string:
+      // Make it in to a one-element list in case the caller wants to modify
+      // the list and to save time in case this method is called again.
+      value = [value]
+      headers_[key] = value
+    return value
 
   /**
   Sets the $key to the given $value.
@@ -58,7 +75,7 @@ class Headers:
     the old values are discarded.
   */
   set key/string value/string -> none:
-    headers_[ascii_normalize_ key] = [value]
+    headers_[ascii_normalize_ key] = value
 
   /**
   Adds a new $value to the $key.
@@ -68,17 +85,29 @@ class Headers:
   */
   add key/string value/string -> none:
     key = ascii_normalize_ key
-    headers_.get key
-      --if_present=: it.add value
-      --if_absent=:  headers_[key] = [value]
+    headers_.update key --if_absent=(: value): | old |
+      if old is string:
+        [old, value]
+      else:
+        old.add value
+        old
+
+  contains key/string -> bool:
+    if headers_.contains key: return true
+    key = ascii_normalize_ key
+    return headers_.contains key
 
   write_to writer -> none:
     headers_.do: | key values |
-      values.do: | value |
+      block := : | value |
         writer.write key
         writer.write ": "
         writer.write value
         writer.write "\r\n"
+      if values is string:
+        block.call values
+      else:
+        values.do block
 
   stringify -> string:
     buffer := bytes.Buffer
@@ -89,11 +118,16 @@ class Headers:
   Creates a copy of this instance.
   */
   copy -> Headers:
-    result := Headers
-    headers_.do: | key values/List |
-      copied := List values.size: values[it]
-      result.headers_[key] = copied
-    return result
+    result := Map
+    headers_.do: | key values |
+      if values is string:
+        result[key] = values
+      else:
+        if values.size == 1:
+          result[key] = values[0]
+        else:
+          result[key] = values.copy
+    return Headers.private_ result
 
   // Camel-case a string.  Only works for ASCII in accordance with the HTTP
   // standard.  If the string is already camel cased (the norm) then no
