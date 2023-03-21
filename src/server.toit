@@ -78,7 +78,7 @@ class Server:
         handle_connection_closure := ::
           try:  // A try to ensure the semaphore is upped in the child task.
             detached := false
-            e := catch --trace=(: not is_close_exception_ it and it != "DEADLINE_EXCEEDED_ERROR"):
+            e := catch --trace=(: not is_close_exception_ it and it != DEADLINE_EXCEEDED_ERROR):
               detached = run_connection_ connection handler logger
             connection.close_write
             close_logger := e ? logger.with_tag "reason" e : logger
