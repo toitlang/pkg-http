@@ -782,9 +782,10 @@ class ParsedUri_:
     scheme = scheme or default_scheme or (previous and previous.scheme)
     if not scheme: throw "Missing scheme in '$uri'"
     if not SCHEMES_.contains scheme: throw "Unknown scheme: '$scheme'"
-    // If this is a URI supplied by the library user (no previous). We allow
-    // plain hostnames with no path, but if there is a path we require a double
-    // slash.
+    // If this is a URI supplied by the library user (no previous), we allow
+    // plain hostnames with no path, but if there is a previous we require a
+    // double slash to indicate a hostname because otherwise it is a relative
+    // URI.
     if not previous and uri.contains "/" and not uri.starts_with "//": throw "URI_PARSING_ERROR"
     host := null
     port := null
@@ -845,9 +846,10 @@ class ParsedUri_:
     return "/" + (old_parts.join "/")
 
   static extract_host_with_optional_port_ scheme/string host/string [block] -> none:
-    // Four cases:
+    // Two cases:
     // 1) host
     // 2) host:port
+    // In either case the host may be an IPv6 address that contains colons.
     port := SCHEMES_[scheme]
     ipv6 := false
     colon := host.index_of --last ":"
