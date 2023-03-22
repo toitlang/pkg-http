@@ -739,7 +739,7 @@ class ParsedUri_:
 
   // When redirecting we need to take the old URI into account to interpret the new one.
   constructor.parse_ uri/string --previous/ParsedUri_?=null:
-    parsed := ParsedUri_.parse_ uri --default_scheme=null
+    parsed := ParsedUri_.parse_ uri --default_scheme=null --previous=previous
     new_scheme := parsed.scheme
     if previous and (new_scheme.starts_with "ws") != (previous.scheme.starts_with "ws"):
       throw "INVALID_REDIRECT"  // Can't redirect a WebSockets URI to an HTTP URI or vice versa.
@@ -765,43 +765,58 @@ class ParsedUri_:
     default_port := SCHEMES_[scheme]
     return default_port == port ? host : "$host:$port"
 
-  constructor.parse_ uri/string --default_scheme/string?:
+  constructor.parse_ uri/string --default_scheme/string? --previous/ParsedUri_?=null:
     // We recognize a scheme if it's either one of the four we support or if it's
     // followed by colon-slash.  This lets us recognize localhost:1080.
     colon := uri.index_of ":"
     scheme/string? := null
     // Recognize a prefix like "https:/"
-    if 0 < colon < uri.size - 1:
+    if 0 < colon < uri.size - 2:
       up_to_colon := uri[..colon]
       if is_alpha_ up_to_colon:
         lower := to_ascii_lower_ up_to_colon
         if SCHEMES_.contains lower or uri[colon + 1] == '/':
           scheme = lower
           uri = uri[colon + 1..]
-    if not scheme: scheme = default_scheme
+
+    scheme = scheme or default_scheme or (previous and previous.scheme)
     if not scheme: throw "Missing scheme in '$uri'"
     if not SCHEMES_.contains scheme: throw "Unknown scheme: '$scheme'"
-    if uri.contains "/" and not uri.starts_with "//": throw "URI_PARSING_ERROR"
-    if uri.starts_with "//": uri = uri[2..]
+    // If this is a URI supplied by the library user (no previous). We allow
+    // plain hostnames with no path, but if there is a path we require a double
+    // slash.
+    if not previous and uri.contains "/" and not uri.starts_with "//": throw "URI_PARSING_ERROR"
     host := null
     port := null
     path := ?
-    slash := uri.index_of "/"
     // Named block.
     get_host_and_port := : | h p |
       host = h
       port = p
-    if slash < 0:
-      extract_host_with_optional_port_ scheme uri get_host_and_port
-      path = "/"
+    has_host := not previous  // If there's no previous URI we assume there is a hostname.
+    if uri.starts_with "//":
+      uri = uri[2..]
+      has_host = true
+    if has_host:
+      slash := uri.index_of "/"
+      if slash < 0:
+        extract_host_with_optional_port_ scheme uri get_host_and_port
+        path = "/"
+      else:
+        extract_host_with_optional_port_ scheme uri[..slash] get_host_and_port
+        path = uri[slash..]
     else:
-      extract_host_with_optional_port_ scheme uri[..slash] get_host_and_port
-      path = uri[slash..]
+      host = previous.host
+      port = previous.port
+      path = uri
     hash := path.index_of "#"
     fragment := null
     if hash > 0:
       fragment = path[hash + 1..]
       path = path[..hash]
+    if previous and not path.starts_with "/":
+      // Relative path.
+      path = merge_paths_ previous.path path
     return ParsedUri_.private_
         --scheme=scheme
         --host=host
@@ -809,6 +824,25 @@ class ParsedUri_:
         --path=path
         --fragment=fragment
         --parse_port_in_host=false
+
+  static merge_paths_ old_path/string new_path/string -> string:
+    // Conform to note in RFC 3986 section 5.2.4.
+    query := old_path.index_of "?"
+    if query > 0: old_path = old_path[..query]
+    old_parts := old_path.split "/"
+    old_parts = old_parts[1..old_parts.size - 1]
+    new_parts := new_path.split "/"
+    while new_parts.size != 0:
+      if new_parts[0] == ".":
+        new_parts = new_parts[1..]
+      else if new_parts[0] == "..":
+        if old_parts.size == 0: throw "ILLEGAL_PATH"
+        old_parts = old_parts[..old_parts.size - 1]
+        new_parts = new_parts[1..]
+      else:
+        old_parts += new_parts
+        break
+    return "/" + (old_parts.join "/")
 
   static extract_host_with_optional_port_ scheme/string host/string [block] -> none:
     // Four cases:
