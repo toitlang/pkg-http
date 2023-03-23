@@ -56,21 +56,15 @@ run_client network port/int -> none:
     response = client.get --host="localhost" --port=port --path="/foo.json"
     expect_equals connection client.connection_  // Check we reused the connection.
 
-    expect_equals "application/json"
-        response.headers.single "Content-Type"
-    crock := #[]
-    while data := response.body.read:
-      crock += data
-    json.decode crock
+    expect_json response:
+      expect_equals 123 it["foo"]
 
   response := client.get --uri="http://localhost:$port/redirect_back"
   expect connection != client.connection_  // Because of the redirect we had to make a new connection.
   expect_equals "application/json"
       response.headers.single "Content-Type"
-  crock := #[]
-  while data := response.body.read:
-    crock += data
-  json.decode crock
+  expect_json response:
+    expect_equals 123 it["foo"]
 
   expect_throw "Too many redirects": client.get --uri="http://localhost:$port/redirect_loop"
 
@@ -132,24 +126,17 @@ run_client network port/int -> none:
 
   response5 := client.get --uri="http://localhost:$port/redirect_from"
   expect connection != client.connection_  // Because of two redirects we had to make two new connections.
-  expect_equals "application/json"
-      response5.headers.single "Content-Type"
-  crock2 := #[]
-  while data := response5.body.read:
-    crock2 += data
-  json.decode crock2
+  expect_json response5:
+    expect_equals 123 it["foo"]
 
   data := {"foo": "bar", "baz": [42, 103]}
 
   response6 := client.post_json data --uri="http://localhost:$port/post_json"
   expect_equals "application/json"
       response6.headers.single "Content-Type"
-  crock3 := #[]
-  while byte_array := response6.body.read:
-    crock3 += byte_array
-  round_trip := json.decode crock3
-  expect_equals data["foo"] round_trip["foo"]
-  expect_equals data["baz"] round_trip["baz"]
+  expect_json response6:
+    expect_equals data["foo"] it["foo"]
+    expect_equals data["baz"] it["baz"]
 
   response7 := client.post_json data --uri="http://localhost:$port/post_json_redirected_to_cat"
   expect_equals "image/png"
@@ -159,7 +146,24 @@ run_client network port/int -> none:
     round_trip_cat += byte_array
   expect_equals CAT round_trip_cat
 
+  response8 := client.get --uri="http://localhost:$port/subdir/redirect_relative"
+  expect_json response8:
+    expect_equals 345 it["bar"]
+
+  response9 := client.get --uri="http://localhost:$port/subdir/redirect_absolute"
+  expect_json response9:
+    expect_equals 123 it["foo"]
+
   client.close
+
+expect_json response/http.Response [verify_block]:
+  expect_equals "application/json"
+      response.headers.single "Content-Type"
+  crock := #[]
+  while data := response.body.read:
+    crock += data
+  result := json.decode crock
+  verify_block.call result
 
 start_server network -> int:
   server_socket1 := network.tcp_listen 0
@@ -195,6 +199,14 @@ listen server server_socket my_port other_port:
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_back"
     else if request.path == "/redirect_back":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/foo.json"
+    else if request.path == "/subdir/redirect_relative":
+      response_writer.redirect http.STATUS_FOUND "bar.json"
+    else if request.path == "/subdir/bar.json":
+      response_writer.headers.set "Content-Type" "application/json"
+      response_writer.write
+        json.encode {"bar": 345 }
+    else if request.path == "/subdir/redirect_absolute":
+      response_writer.redirect http.STATUS_FOUND "/foo.json"
     else if request.path == "/redirect_loop":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_loop"
     else if request.path == "/204_no_content":

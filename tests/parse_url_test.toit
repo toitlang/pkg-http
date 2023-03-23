@@ -154,21 +154,61 @@ main:
   expect_equals null               parts.fragment
   expect_not                       parts.use_tls
 
-  parts = http.ParsedUri_.parse_ "https://original.com/foo#fraggy"
+  parts = http.ParsedUri_.parse_ "https://original.com/foo/#fraggy"
   expect_equals "https"            parts.scheme
   expect_equals "original.com"     parts.host
   expect_equals 443                parts.port
-  expect_equals "/foo"             parts.path
+  expect_equals "/foo/"            parts.path
   expect_equals "fraggy"           parts.fragment
   expect                           parts.use_tls
 
-  parts = http.ParsedUri_.parse_ --previous=parts "http://redirect.com/bar"
-  expect_equals "http"             parts.scheme  // Changed in accordance with redirect.
-  expect_equals "redirect.com"     parts.host
-  expect_equals 80                 parts.port
-  expect_equals "/bar"             parts.path
-  expect_equals "fraggy"           parts.fragment  // Kept from original non-redirected URI.
-  expect_not                       parts.use_tls
+  parts2 := http.ParsedUri_.parse_ --previous=parts "http://redirect.com/bar"
+  expect_equals "http"             parts2.scheme  // Changed in accordance with redirect.
+  expect_equals "redirect.com"     parts2.host
+  expect_equals 80                 parts2.port
+  expect_equals "/bar"             parts2.path
+  expect_equals "fraggy"           parts2.fragment  // Kept from original non-redirected URI.
+  expect_not                       parts2.use_tls
+
+  parts2 = http.ParsedUri_.parse_ --previous=parts "/bar#fragment"
+  expect_equals "https"            parts2.scheme
+  expect_equals "original.com"     parts2.host
+  expect_equals 443                parts2.port
+  expect_equals "/bar"             parts2.path
+  expect_equals "fragment"         parts2.fragment  // Kept from original non-redirected URI.
+  expect                           parts2.use_tls
+
+  parts2 = http.ParsedUri_.parse_ --previous=parts "bar#fraggles"
+  expect_equals "https"            parts2.scheme
+  expect_equals "original.com"     parts2.host
+  expect_equals 443                parts2.port
+  expect_equals "/foo/bar"         parts2.path      // composed of original path and relative path.
+  expect_equals "fraggles"         parts2.fragment  // Kept from original non-redirected URI.
+  expect                           parts2.use_tls
+
+  parts = http.ParsedUri_.parse_ "https://original.com"  // No path - we should add a slash.
+  expect_equals "https"            parts.scheme
+  expect_equals "original.com"     parts.host
+  expect_equals 443                parts.port
+  expect_equals "/"                parts.path      // Slash was implied.
+  expect_equals null               parts.fragment
+  expect                           parts.use_tls
+
+  parts = http.ParsedUri_.parse_ "https://original.com/foo/?value=/../"  // Query part.
+  expect_equals "https"            parts.scheme
+  expect_equals "original.com"     parts.host
+  expect_equals 443                parts.port
+  expect_equals "/foo/?value=/../" parts.path
+  expect_equals null               parts.fragment
+  expect                           parts.use_tls
+
+  parts2 = http.ParsedUri_.parse_ --previous=parts "bar?value=dotdot#fraggles"
+  expect_equals "https"            parts2.scheme
+  expect_equals "original.com"     parts2.host
+  expect_equals 443                parts2.port
+  expect_equals "/foo/bar?value=dotdot" parts2.path  // Joined, the old query is not used.
+  expect_equals "fraggles"         parts2.fragment
+  expect                           parts2.use_tls
 
   // Can't redirect an HTTP connection to a WebSockets connection.
   expect_throw "INVALID_REDIRECT": parts = http.ParsedUri_.parse_ --previous=parts "wss://socket.redirect.com/api"
@@ -204,3 +244,32 @@ main:
   expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https://[www.apple.com]:80/foo#fraggy"
   expect_throw "ILLEGAL_HOSTNAME": parts = http.ParsedUri_.parse_ "https:// [::]:80/foo#fraggy"
   expect_throw "INTEGER_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https:// [::]/foo#fraggy"
+
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/" "foo.txt"
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/" "./foo.txt"
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar.jpg" "foo.txt"
+  expect_equals "/bar/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/" "foo.txt"
+  expect_equals "/bar/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/sdlkfjsdl.sdlkf" "foo.txt"
+  expect_equals "/bar/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/" "./foo.txt"
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/" "../foo.txt"
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/super-duper.jpg" "../foo.txt"
+  expect_equals "/foo.txt"
+      http.ParsedUri_.merge_paths_ "/bar/super-duper.jpg" "./.././foo.txt"
+  expect_equals "/"
+      http.ParsedUri_.merge_paths_ "/bar/" ".."
+  expect_throw "ILLEGAL_PATH":
+      http.ParsedUri_.merge_paths_ "/" "../foo.txt"
+  expect_throw "ILLEGAL_PATH":
+      http.ParsedUri_.merge_paths_ "/" "../../foo.txt"
+  expect_throw "ILLEGAL_PATH":
+      http.ParsedUri_.merge_paths_ "/bar/" "../../foo.txt"
+  expect_throw "ILLEGAL_PATH":
+      http.ParsedUri_.merge_paths_ "/bar/" "./../../foo.txt"
