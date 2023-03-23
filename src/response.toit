@@ -42,4 +42,4 @@ class Response:
     create a new one.
   */
   drain -> none:
-    while body.read: null
+    catch: while body.read: null
