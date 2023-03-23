@@ -154,6 +154,10 @@ run_client network port/int -> none:
   expect_json response9:
     expect_equals 123 it["foo"]
 
+  request := client.new_request "HEAD" --host="localhost" --port=port --path="/foohead.json"
+  response10 := request.send
+  expect_equals 405 response10.status_code
+
   client.close
 
 expect_json response/http.Response [verify_block]:
