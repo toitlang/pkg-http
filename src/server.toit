@@ -114,7 +114,10 @@ class Server:
       with_timeout read_timeout:
         request = connection.read_request
       if not request: return false  // Client closed connection.
-      request_logger := logger.with_tag "path" request.path
+      request_logger := logger
+      if request.method != "GET":
+        request_logger = request_logger.with_tag "method" request.method
+      request_logger = request_logger.with_tag "path" request.path
       request_logger.debug "incoming request"
       writer ::= ResponseWriter connection request request_logger
       unwind_block := : | exception |
@@ -123,8 +126,11 @@ class Server:
         // headers - can't send a 500 if we already sent a success header.
         closed := writer.close_on_exception_ "Internal Server error - $exception"
         closed   // Unwind if the connection is dead.
-      error := catch --trace --unwind=unwind_block:
-        handler.call request writer  // Calls the block passed to listen.
+      if request.method == "HEAD":
+        writer.write_headers STATUS_METHOD_NOT_ALLOWED --message="HEAD not implemented"
+      else:
+        catch --trace --unwind=unwind_block:
+          handler.call request writer  // Calls the block passed to listen.
       if writer.detached_: return true
       if request.body.read:
         // The request (eg. a POST request) was not fully read - should have
