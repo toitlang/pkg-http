@@ -827,6 +827,7 @@ class ParsedUri_:
         --parse_port_in_host=false
 
   static merge_paths_ old_path/string new_path/string -> string:
+    assert: old_path.starts_with "/"
     // Conform to note in RFC 3986 section 5.2.4.
     query := old_path.index_of "?"
     if query > 0: old_path = old_path[..query]
