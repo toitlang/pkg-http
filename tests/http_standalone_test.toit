@@ -95,7 +95,7 @@ run_client network port/int -> none:
   expect_equals connection client.connection_  // Check we reused the connection.
   response.drain
 
-  exception3 := catch --trace=(: it != "UNEXPECTED_END_OF_READER"):
+  exception3 := catch --trace=(: not is_close_exception_ it):
     response3 := client.get --uri="http://localhost:$port/hard_close_because_wrote_too_little"
     if 200 <= response3.status_code <= 299:
       while response3.body.read: null
@@ -112,7 +112,7 @@ run_client network port/int -> none:
 
   connection = client.connection_
 
-  exception4 := catch --trace=(: it != "UNEXPECTED_END_OF_READER"):
+  exception4 := catch --trace=(: not is_close_exception_ it):
     response4 := client.get --uri="http://localhost:$port/hard_close_because_throw_after_headers"
     if 200 <= response4.status_code <= 299:
       while response4.body.read: null
@@ -121,7 +121,8 @@ run_client network port/int -> none:
   response = client.get --host="localhost" --port=port --path="/foo.json"
   expect_equals 200 response.status_code
   // We will not be reusing the connection here because the server had to close it
-  expect_equals "UNEXPECTED_END_OF_READER" exception4
+  expect
+    is_close_exception_ exception4
   // after the user's router threw after writing success headers.
   expect_not_equals connection client.connection_  // Check we reused the connection.
   response.drain
