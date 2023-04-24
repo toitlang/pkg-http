@@ -47,10 +47,24 @@ class Server:
     root_certificates_ = root_certificates
     if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
 
+  /**
+  Sets up an HTTP server on the given interface and port.
+  Use $(listen server_socket handler) if you want to let the system
+    pick a free port.
+  The handler is called for each incoming request with two arguments:
+    The $Request and a $ResponseWriter.
+  */
   listen interface/tcp.Interface port/int handler/Lambda -> none:
     server_socket := interface.tcp_listen port
     listen server_socket handler
 
+  /**
+  Sets up an HTTP server on the given TCP server socket.
+  This variant of server_socket gives you more control over the socket,
+    eg. to let the system pick a free port.  See examples/server.toit.
+  The handler is called for each incoming request with two arguments:
+    The $Request and a $ResponseWriter.
+  */
   listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
       parent_task_semaphore := null
