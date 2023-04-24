@@ -64,6 +64,23 @@ class Server:
     eg. to let the system pick a free port.  See examples/server.toit.
   The handler is called for each incoming request with two arguments:
     The $Request and a $ResponseWriter.
+
+  # Examples
+  ```
+  import http
+  import net
+  main:
+    network := net.open
+    // Listen on a free port.
+    tcp_socket := network.tcp_listen 0
+    print "Server on http://localhost:$tcp_socket.local_address.port/"
+    server := http.Server
+    server.listen tcp_socket:: | request/http.Request writer/http.ResponseWriter |
+      if request.path == "/":
+        writer.headers.set "Content-Type" "text/html"
+        writer.write "<html><body>hello world</body></html>
+      writer.close
+  ```
   */
   listen server_socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
