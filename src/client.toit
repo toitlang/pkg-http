@@ -698,18 +698,6 @@ class Client:
     // finalizer, so it can avoid some out-of-memory situations.
     close
 
-// TODO: This is just a slower version of string.to_ascii_lower, which is in
-// newer SDKs.
-to_ascii_lower_ str/string -> string:
-  str.do:
-    if 'A' <= it <= 'Z':
-      byte_array := str.to_byte_array
-      byte_array.size.repeat:
-        if 'A' <= byte_array[it] <= 'Z':
-          byte_array[it] ^= 0x20
-      return byte_array.to_string
-  return str
-
 class ParsedUri_:
   scheme/string
   host/string
@@ -782,7 +770,7 @@ class ParsedUri_:
     if 0 < colon < uri.size - 2:
       up_to_colon := uri[..colon]
       if is_alpha_ up_to_colon:
-        lower := to_ascii_lower_ up_to_colon
+        lower := up_to_colon.to_ascii_lower
         if SCHEMES_.contains lower or uri[colon + 1] == '/':
           scheme = lower
           uri = uri[colon + 1..]
