@@ -1,2 +1,5 @@
 # Toit Package.
 name: http
+environment:
+  # alpha 58 changed the interface of url.encode.
+  sdk: ^2.0.0-alpha.58

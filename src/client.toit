@@ -4,6 +4,7 @@
 
 import bytes
 import encoding.json
+import encoding.url
 import net
 import net.tcp
 import reader
@@ -587,51 +588,13 @@ class Client:
       else:
         buffer.write "&"
       buffer.write
-        url_encode_ key
+        url.encode key
       buffer.write "="
       buffer.write
-        url_encode_ value
+        url.encode value
     encoded := buffer.bytes
 
     return post_ encoded parsed --headers=headers --content_type="application/x-www-form-urlencoded" --follow_redirects=follow_redirects
-
-  // TODO: This is a copy of the code in the standard lib/encoding/url.toit.
-  // Remove when an SDK release has made this available to the HTTP package.
-
-  static NEEDS_ENCODING_ ::= ByteArray '~' - '-' + 1:
-    c := it + '-'
-    (c == '-' or c == '_' or c == '.' or c == '~' or '0' <= c <= '9' or 'A' <= c <= 'Z' or 'a' <= c <= 'z') ? 0 : 1
-
-  // Takes an ASCII string or a byte array.
-  // Counts the number of bytes that need escaping.
-  count_escapes_ data -> int:
-    count := 0
-    table := NEEDS_ENCODING_
-    data.do: | c |
-      if not '-' <= c <= '~':
-        count++
-      else if table[c - '-'] == 1:
-        count++
-    return count
-
-  // Takes an ASCII string or a byte array.
-  url_encode_ from -> any:
-    if from is string and from.size != (from.size --runes):
-      from = from.to_byte_array
-    escaped := count_escapes_ from
-    if escaped == 0: return from
-    result := ByteArray from.size + escaped * 2
-    pos := 0
-    table := NEEDS_ENCODING_
-    from.do: | c |
-      if not '-' <= c <= '~' or table[c - '-'] == 1:
-        result[pos] = '%'
-        result[pos + 1] = "0123456789ABCDEF"[c >> 4]
-        result[pos + 2] = "0123456789ABCDEF"[c & 0xf]
-        pos += 3
-      else:
-        result[pos++] = c
-    return result
 
   try_to_reuse_ location/ParsedUri_ [block]:
     // We try to reuse an existing connection to a server, but a web server can
