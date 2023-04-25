@@ -3,6 +3,7 @@
 // be found in the tests/TESTS_LICENSE file.
 
 import encoding.json
+import encoding.url
 import expect show *
 import http
 import http.connection show is_close_exception_
@@ -16,6 +17,14 @@ main:
   network := net.open
   port := start_server network
   run_client network port
+
+POST_DATA ::= {
+    "foo": "bar",
+    "date": "2023-04-25",
+    "baz": "42?103",
+    "/&%": "slash",
+    "slash": "/&%"
+}
 
 run_client network port/int -> none:
   client := http.Client network
@@ -163,6 +172,9 @@ run_client network port/int -> none:
   response10 := request.send
   expect_equals 405 response10.status_code
 
+  response11 := client.post_form --host="localhost" --port=port --path="/post_form" POST_DATA
+  expect_equals 200 response11.status_code
+
   client.close
 
 expect_json response/http.Response [verify_block]:
@@ -236,6 +248,22 @@ listen server server_socket my_port other_port:
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
         response_writer.write data
+    else if request.path == "/post_form":
+      expect_equals "application/x-www-form-urlencoded" (request.headers.single "Content-Type")
+      response_writer.headers.set "Content-Type" "text/plain"
+      str := ""
+      while data := request.body.read:
+        str += data.to_string
+      map := {:}
+      str.split "&": | pair |
+        parts := pair.split "="
+        key := url.decode parts[0]
+        value := url.decode parts[1]
+        map[key.to_string] = value.to_string
+      expect_equals POST_DATA.size map.size
+      POST_DATA.do: | key value |
+        expect_equals POST_DATA[key] map[key]
+      response_writer.write "OK"
     else if request.path == "/post_json_redirected_to_cat":
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
