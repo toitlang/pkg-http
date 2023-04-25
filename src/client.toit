@@ -637,17 +637,25 @@ class Client:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
-    reused := ensure_connection_ location
-    catch --unwind=(: not reused or not is_close_exception_ it):
+    success := false
+    try:
+      reused := ensure_connection_ location
+      catch --unwind=(: not reused or not is_close_exception_ it):
+        block.call connection_
+        success = true
+        return
+      // We tried to reuse an already-open connection, but the server closed it.
+      connection_.close
+      connection_ = null
+      // Try a second time with a fresh connection.  Since we just closed it,
+      // this will create a new one.
+      ensure_connection_ location
       block.call connection_
-      return
-    // We tried to reuse an already-open connection, but the server closed it.
-    connection_.close
-    connection_ = null
-    // Try a second time with a fresh connection.  Since we just closed it,
-    // this will create a new one.
-    ensure_connection_ location
-    block.call connection_
+      success = true
+    finally:
+      if not success and connection_:
+        connection_.close
+        connection_ = null
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
