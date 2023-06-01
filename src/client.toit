@@ -94,7 +94,7 @@ class Client:
   server_name_/string? ::= null
   root_certificates_/List ::= []
   connection_/Connection? := null
-  session_data_/Map ::= {:}  // From host:port to session data.
+  security_store_/SecurityStore
 
   /**
   Constructs a new client instance over the given interface.
@@ -115,7 +115,9 @@ class Client:
   Use `net.open` to obtain an interface.
   */
   constructor .interface_
-      --root_certificates/List=[]:
+      --root_certificates/List=[]
+      --security_store/SecurityStore=InMemorySecurityStore:
+    security_store_ = security_store
     root_certificates_ = root_certificates
     add_finalizer this:: this.finalize_
 
@@ -135,7 +137,9 @@ class Client:
   constructor.tls .interface_
       --root_certificates/List=[]
       --server_name/string?=null
-      --certificate/tls.Certificate?=null:
+      --certificate/tls.Certificate?=null
+      --security_store/SecurityStore=InMemorySecurityStore:
+    security_store_ = security_store
     use_tls_by_default_ = true
     root_certificates_ = root_certificates
     server_name_ = server_name
@@ -630,24 +634,24 @@ class Client:
         connection_.close
         connection_ = null
         // Don't try again with session data if the connection attempt failed.
-        if not reused: session_data_.remove host_with_port
+        if not reused: security_store_.delete_session_data host_with_port
     finally:
       if not success:
-        session_data_.remove host_with_port
+        security_store_.delete_session_data host_with_port
         if connection_:
           connection_.close
           connection_ = null
 
   use_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
-    if data := session_data_.get host_with_port:
+    if data := security_store_.retrieve_session_data host_with_port:
       tls_socket.session_state = data
 
   update_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
     state := tls_socket.session_state
     if state:
-      session_data_[host_with_port] = state
+      security_store_.store_session_data host_with_port state
     else:
-      session_data_.remove host_with_port
+      security_store_.delete_session_data host_with_port
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
@@ -889,3 +893,36 @@ class ParsedUri_:
   static is_alpha_ str/string -> bool:
     str.do: if not 'a' <= it <= 'z' and not 'A' <= it <= 'Z': return false
     return true
+
+/**
+The interface of an object you can provide to the $Client to store and
+  retrieve security data.  Currently only supports session data, which are
+  data that can be used to speed up reconnection to a TLS server.
+*/
+abstract class SecurityStore:
+  /// Store session data (eg a TLS ticket) for a given host and port.
+  abstract store_session_data host_and_port/string data/ByteArray -> none
+  /// After a failed attempt to use session data we should not try to use it
+  /// again.  This method should delete it from the store.
+  abstract delete_session_data host_and_port/string -> none
+  /// If we have session data stored for a given host and port, this method
+  /// should return it.
+  abstract retrieve_session_data host_and_port/string -> ByteArray?
+
+/**
+Default implementation of $SecurityStore that stores the data in an in-memory
+  hash map. This is not very useful, since data is not persisted over deep
+  sleep or between Clients, but it's an example of how to implement the
+  interface.
+*/
+class InMemorySecurityStore extends SecurityStore:
+  session_data_ /Map := {:}
+
+  store_session_data host_and_port/string data/ByteArray -> none:
+    session_data_[host_and_port] = data
+
+  delete_session_data host_and_port/string -> none:
+    session_data_.remove host_and_port
+
+  retrieve_session_data host_and_port/string -> ByteArray?:
+    return session_data_.get host_and_port

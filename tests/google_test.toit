@@ -9,7 +9,9 @@ import certificate_roots
 
 main:
   network := net.open
+  security_store := http.InMemorySecurityStore
   client := http.Client.tls network
+    --security_store=security_store
     --root_certificates=[certificate_roots.GLOBALSIGN_ROOT_CA,
                          certificate_roots.GTS_ROOT_R1]
   response := client.get "script.google.com" "/"
@@ -21,6 +23,6 @@ main:
   // Deliberately break the session state so that the server rejects our
   // attempt to use an abbreviated handshake.  We harmlessly retry without the
   // session data.
-  client.session_data_["www.google.com"][15] ^= 42
+  security_store.session_data_["www.google.com"][15] ^= 42
   response = client.get "www.google.com" "/"
   while data := response.body.read:
