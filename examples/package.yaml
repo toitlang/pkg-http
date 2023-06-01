@@ -1,3 +1,6 @@
 dependencies:
+  certificate_roots:
+    url: github.com/toitware/toit-cert-roots
+    version: ^1.4.0
   http:
     path: ..

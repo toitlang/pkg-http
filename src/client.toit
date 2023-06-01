@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS. All rights reserved.
+// Copyright (C) 2023 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
@@ -30,6 +30,12 @@ When the client is no longer needed, resources should be freed up with the
 
 This client has built-in websocket support.  The separate websockets package
   should no longer be used.
+
+The client caches connections to servers, so a second request to the same
+  server will use the same socket and may save a lot of CPU time for setting
+  up TLS connections.  It also caches session state for TLS connections, so
+  subsequent connections to a server will use the session state to speed up
+  the TLS handshake from about 1000ms to about 150ms (on ESP32).
 
 # Get
 Use the $get method to fetch data using a $GET request.
@@ -88,6 +94,7 @@ class Client:
   server_name_/string? ::= null
   root_certificates_/List ::= []
   connection_/Connection? := null
+  session_data_/Map ::= {:}  // From host:port to session data.
 
   /**
   Constructs a new client instance over the given interface.
@@ -600,25 +607,47 @@ class Client:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
+    host_with_port := location.host_with_port
     success := false
     try:
-      reused := ensure_connection_ location
-      catch --unwind=(: not reused or not is_close_exception_ it):
-        block.call connection_
-        success = true
-        return
-      // We tried to reuse an already-open connection, but the server closed it.
-      connection_.close
-      connection_ = null
-      // Try a second time with a fresh connection.  Since we just closed it,
-      // this will create a new one.
-      ensure_connection_ location
-      block.call connection_
-      success = true
-    finally:
-      if not success and connection_:
+      // Three attempts.  One with a reused connection, one with reused session
+      // info and then a clean attempt.  The reason is that our TLS
+      // implementation cannot currently fall back from an attempt with session
+      // info to a from-scratch connection attempt.
+      for attempt := 0; attempt < 3; attempt++:
+        reused := ensure_connection_ location
+        catch --unwind=(: attempt == 2 or ((not reused or not is_close_exception_ it) and it != "RESUME_FAILED")):
+          sock := connection_.socket_
+          if sock is tls.Socket and not reused:
+            tls_socket := sock as tls.Socket
+            use_stored_session_state_ tls_socket host_with_port
+            tls_socket.handshake
+            update_stored_session_state_ tls_socket host_with_port
+          block.call connection_
+          success = true
+          return
+        // We tried to reuse an already-open connection, but the server closed it.
         connection_.close
         connection_ = null
+        // Don't try again with session data if the connection attempt failed.
+        if not reused: session_data_.remove host_with_port
+    finally:
+      if not success:
+        session_data_.remove host_with_port
+        if connection_:
+          connection_.close
+          connection_ = null
+
+  use_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
+    if data := session_data_.get host_with_port:
+      tls_socket.session_state = data
+
+  update_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
+    state := tls_socket.session_state
+    if state:
+      session_data_[host_with_port] = state
+    else:
+      session_data_.remove host_with_port
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
@@ -629,8 +658,9 @@ class Client:
       // Hostname etc. didn't match so we need a new connection.
       connection_.close
       connection_ = null
-    socket := interface_.tcp_connect location.host location.port
+    socket/tcp.Socket := interface_.tcp_connect location.host location.port
     if location.use_tls:
+      // Wrap the socket in TLS.
       socket = tls.Socket.client socket
         --server_name=server_name_ or location.host
         --certificate=certificate_
