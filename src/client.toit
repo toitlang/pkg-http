@@ -116,7 +116,7 @@ class Client:
   */
   constructor .interface_
       --root_certificates/List=[]
-      --security_store/SecurityStore=InMemorySecurityStore:
+      --security_store/SecurityStore=SecurityStoreInMemory:
     security_store_ = security_store
     root_certificates_ = root_certificates
     add_finalizer this:: this.finalize_
@@ -138,7 +138,7 @@ class Client:
       --root_certificates/List=[]
       --server_name/string?=null
       --certificate/tls.Certificate?=null
-      --security_store/SecurityStore=InMemorySecurityStore:
+      --security_store/SecurityStore=SecurityStoreInMemory:
     security_store_ = security_store
     use_tls_by_default_ = true
     root_certificates_ = root_certificates
@@ -611,7 +611,6 @@ class Client:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
-    host_with_port := location.host_with_port
     success := false
     try:
       // Three attempts.  One with a reused connection, one with reused session
@@ -624,9 +623,9 @@ class Client:
           sock := connection_.socket_
           if sock is tls.Socket and not reused:
             tls_socket := sock as tls.Socket
-            use_stored_session_state_ tls_socket host_with_port
+            use_stored_session_state_ tls_socket location
             tls_socket.handshake
-            update_stored_session_state_ tls_socket host_with_port
+            update_stored_session_state_ tls_socket location
           block.call connection_
           success = true
           return
@@ -634,24 +633,24 @@ class Client:
         connection_.close
         connection_ = null
         // Don't try again with session data if the connection attempt failed.
-        if not reused: security_store_.delete_session_data host_with_port
+        if not reused: security_store_.delete_session_data location.host location.port
     finally:
       if not success:
-        security_store_.delete_session_data host_with_port
+        security_store_.delete_session_data location.host location.port
         if connection_:
           connection_.close
           connection_ = null
 
-  use_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
-    if data := security_store_.retrieve_session_data host_with_port:
+  use_stored_session_state_ tls_socket/tls.Socket location/ParsedUri_:
+    if data := security_store_.retrieve_session_data location.host location.port:
       tls_socket.session_state = data
 
-  update_stored_session_state_ tls_socket/tls.Socket host_with_port/string:
+  update_stored_session_state_ tls_socket/tls.Socket location/ParsedUri_:
     state := tls_socket.session_state
     if state:
-      security_store_.store_session_data host_with_port state
+      security_store_.store_session_data location.host location.port state
     else:
-      security_store_.delete_session_data host_with_port
+      security_store_.delete_session_data location.host location.port
 
   /// Returns true if the connection was reused.
   ensure_connection_ location/ParsedUri_ -> bool:
@@ -896,18 +895,18 @@ class ParsedUri_:
 
 /**
 The interface of an object you can provide to the $Client to store and
-  retrieve security data.  Currently only supports session data, which are
-  data that can be used to speed up reconnection to a TLS server.
+  retrieve security data.  Currently only supports session data, which is
+  data that can be used to speed up reconnections to TLS servers.
 */
 abstract class SecurityStore:
   /// Store session data (eg a TLS ticket) for a given host and port.
-  abstract store_session_data host_and_port/string data/ByteArray -> none
+  abstract store_session_data host/string port/int data/ByteArray -> none
   /// After a failed attempt to use session data we should not try to use it
   /// again.  This method should delete it from the store.
-  abstract delete_session_data host_and_port/string -> none
+  abstract delete_session_data host/string port/int -> none
   /// If we have session data stored for a given host and port, this method
   /// should return it.
-  abstract retrieve_session_data host_and_port/string -> ByteArray?
+  abstract retrieve_session_data host/string port/int -> ByteArray?
 
 /**
 Default implementation of $SecurityStore that stores the data in an in-memory
@@ -915,14 +914,14 @@ Default implementation of $SecurityStore that stores the data in an in-memory
   sleep or between Clients, but it's an example of how to implement the
   interface.
 */
-class InMemorySecurityStore extends SecurityStore:
-  session_data_ /Map := {:}
+class SecurityStoreInMemory extends SecurityStore:
+  session_data_ ::= {:}
 
-  store_session_data host_and_port/string data/ByteArray -> none:
-    session_data_[host_and_port] = data
+  store_session_data host/string port/int data/ByteArray -> none:
+    session_data_["$host:$port"] = data
 
-  delete_session_data host_and_port/string -> none:
-    session_data_.remove host_and_port
+  delete_session_data host/string port/int -> none:
+    session_data_.remove "$host:$port"
 
-  retrieve_session_data host_and_port/string -> ByteArray?:
-    return session_data_.get host_and_port
+  retrieve_session_data host/string port/int -> ByteArray?:
+    return session_data_.get "$host:$port"
