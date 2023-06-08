@@ -10,9 +10,7 @@ class Headers:
   constructor:
 
   constructor.from_map map/Map:
-    map.do: | key value |
-      if key is not string:
-        throw "Header key must be a string."
+    map.do: | key/string value |
       if value is string:
         // Go through the $add function so that the key is normalized.
         add key value
