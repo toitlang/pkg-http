@@ -5,9 +5,21 @@
 import bytes
 
 class Headers:
-  headers_ := Map
+  headers_/Map? := null
 
   constructor:
+
+  constructor.from_map map/Map:
+    map.do: | key value |
+      if key is not string:
+        throw "Header key must be a string."
+      if value is string:
+        // Go through the $add function so that the key is normalized.
+        add key value
+      else if value is List:
+        list := value as List
+        // Go through the $add function so that the key is normalized.
+        list.do: add key it
 
   constructor.private_ .headers_:
 
@@ -16,6 +28,7 @@ class Headers:
     present.  If there are multiple values, the last value is returned.
   */
   single key -> string?:
+    if not headers_: return null
     values := headers_.get key --if_absent=:
       key = ascii_normalize_ key
       headers_.get key --if_absent=:
@@ -47,6 +60,7 @@ class Headers:
   Does nothing if the $key doesn't exist.
   */
   remove key/string -> none:
+    if not headers_: return
     headers_.remove key
 
   /**
@@ -57,6 +71,7 @@ class Headers:
   Returns null if the header is not present.
   */
   get key/string -> List?:
+    if not headers_: return null
     value := headers_.get key --if_absent=:
       key = ascii_normalize_ key
       headers_.get key --if_absent=:
@@ -75,6 +90,7 @@ class Headers:
     the old values are discarded.
   */
   set key/string value/string -> none:
+    if not headers_: headers_ = {:}
     headers_[ascii_normalize_ key] = value
 
   /**
@@ -85,6 +101,7 @@ class Headers:
   */
   add key/string value/string -> none:
     key = ascii_normalize_ key
+    if not headers_: headers_ = {:}
     headers_.update key --if_absent=(: value): | old |
       if old is string:
         [old, value]
@@ -92,12 +109,15 @@ class Headers:
         old.add value
         old
 
+  /** Whether this instance contains the given $key. */
   contains key/string -> bool:
+    if not headers_: return false
     if headers_.contains key: return true
     key = ascii_normalize_ key
     return headers_.contains key
 
   write_to writer -> none:
+    if not headers_: return
     headers_.do: | key values |
       block := : | value |
         writer.write key
@@ -118,7 +138,8 @@ class Headers:
   Creates a copy of this instance.
   */
   copy -> Headers:
-    result := Map
+    if not headers_: return Headers
+    result := {:}
     headers_.do: | key values |
       if values is string:
         result[key] = values
