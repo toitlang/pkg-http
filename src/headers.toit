@@ -18,6 +18,8 @@ class Headers:
         list := value as List
         // Go through the $add function so that the key is normalized.
         list.do: add key it
+      else:
+        throw "INVALID_HEADER_VALUE"
 
   constructor.private_ .headers_:
 
