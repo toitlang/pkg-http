@@ -44,11 +44,16 @@ class RequestOutgoing extends Request:
   constructor.private_ .connection_ .method .path .headers:
 
   send -> Response:
+    has_body := body != null
+    content_length := has_body and (body is reader.SizedReader)
+        ? (body as reader.SizedReader).size
+        : null
     slash := (path.starts_with "/") ? "" : "/"
     body_writer := connection_.send_headers
         "$method $slash$path HTTP/1.1\r\n"
         headers
         --is_client_request=true
+        --content_length=content_length
         --has_body=(body != null)
     if body:
       while data := body.read:

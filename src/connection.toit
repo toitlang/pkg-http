@@ -92,16 +92,24 @@ class Connection:
   send_headers -> BodyWriter
       status/string headers/Headers
       --is_client_request/bool
+      --content_length/int?
       --has_body/bool:
     if current_writer_: throw "Previous request not completed"
     body_writer/BodyWriter := ?
     needs_to_write_chunked_header := false
 
     if has_body:
-      content_length := headers.single "Content-Length"
+      content_length_header := headers.single "Content-Length"
+      if content_length_header:
+        header_length := int.parse content_length_header
+        if not content_length: content_length = header_length
+        if content_length != header_length:
+          throw "Content-Length header does not match content length"
+      else if content_length:
+        headers.set "Content-Length" "$content_length"
+
       if content_length:
-        length := int.parse content_length
-        body_writer = ContentLengthWriter this writer_ length
+        body_writer = ContentLengthWriter this writer_ content_length
       else:
         needs_to_write_chunked_header = true
         body_writer = ChunkedWriter this writer_
