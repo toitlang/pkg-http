@@ -245,7 +245,7 @@ class WebSocket:
     // The WebSocket nonce is not very important and does not need to be
     // cryptographically random.
     nonce := base64.encode (ByteArray 16: random 0x100)
-    headers.add "Connection" "upgrade"
+    headers.add "Connection" "Upgrade"
     headers.add "Upgrade" "websocket"
     headers.add "Sec-WebSocket-Key" nonce
     headers.add "Sec-WebSocket-Version" "13"
@@ -278,14 +278,15 @@ class WebSocket:
     version_header := request.headers.single "Sec-WebSocket-Version"
     nonce := request.headers.single "Sec-WebSocket-Key"
     message := null
-    if nonce == null:                       message = "No nonce"
-    else if nonce.size != 24:               message = "Bad nonce size"
-    else if connection_header != "upgrade": message = "No Connection: upgrade"
-    else if upgrade_header != "websocket":  message = "No Upgrade: websocket"
-    else if version_header != "13":         message = "Unrecognized Websocket version"
+    if nonce == null:                                                  message = "No nonce"
+    else if nonce.size != 24:                                          message = "Bad nonce size"
+    else if not connection_header or not upgrade_header:               message = "No upgrade headers"
+    else if (Headers.ascii_normalize_ connection_header) != "Upgrade": message = "No Connection: Upgrade"
+    else if (Headers.ascii_normalize_ upgrade_header) != "Websocket":  message = "No Upgrade: websocket"
+    else if version_header != "13":                                    message = "Unrecognized Websocket version"
     else:
       response_writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
-      response_writer.headers.add "Connection" "upgrade"
+      response_writer.headers.add "Connection" "Upgrade"
       response_writer.headers.add "Upgrade" "websocket"
       return nonce
     response_writer.write_headers STATUS_BAD_REQUEST --message=message
