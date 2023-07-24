@@ -426,11 +426,11 @@ class WebSocketReader implements reader.Reader:
 class FragmentReader_:
   owner_ /WebSocket
   control_bits_ /int
-  size_ /int ::= ?
+  size_ /int
   received_ := 0
-  masking_bytes /ByteArray? := null
+  masking_bytes /ByteArray?
 
-  constructor .owner_ .size_ .control_bits_ --masking_bytes/ByteArray?=null:
+  constructor .owner_ .size_ .control_bits_ --.masking_bytes/ByteArray?=null:
 
   is_continuation -> bool: return control_bits_ & 0x0f == OPCODE_CONTINUATION_
   is_text -> bool:         return control_bits_ & 0x0f == OPCODE_TEXT_
