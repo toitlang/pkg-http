@@ -245,10 +245,10 @@ class WebSocket:
     // The WebSocket nonce is not very important and does not need to be
     // cryptographically random.
     nonce := base64.encode (ByteArray 16: random 0x100)
-    headers.add "Connection" "Upgrade"
     headers.add "Upgrade" "websocket"
     headers.add "Sec-WebSocket-Key" nonce
     headers.add "Sec-WebSocket-Version" "13"
+    headers.add "Connection" "Upgrade"
     return nonce
 
   static check_client_upgrade_response_ response/Response nonce/string -> none:

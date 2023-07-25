@@ -346,10 +346,9 @@ class Client:
     headers = headers ? headers.copy : Headers
     MAX_REDIRECTS.repeat:
       nonce := WebSocket.add_client_upgrade_headers_ headers
-      headers.add "Host" parsed.host_with_port
       response/Response? := null
       try_to_reuse_ parsed: | connection |
-        request := connection.new_request GET parsed.path headers
+        request/RequestOutgoing := connection.new_request GET parsed.path headers
         response = request.send
       if follow_redirects and
           (is_regular_redirect_ response.status_code
