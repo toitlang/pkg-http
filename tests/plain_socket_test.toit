@@ -3,7 +3,6 @@
 // be found in the tests/TESTS_LICENSE file.
 
 import expect show *
-import http
 import net
 
 // No HTTP involved, just tests the basics of client and server sockets.
