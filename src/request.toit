@@ -54,7 +54,7 @@ class RequestOutgoing extends Request:
         headers
         --is_client_request=true
         --content_length=content_length
-        --has_body=(body != null)
+        --has_body=has_body
     if body:
       while data := body.read:
         body_writer.write data
