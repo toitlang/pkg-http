@@ -31,14 +31,14 @@ class NonSizedTestReader implements reader.Reader:
   call_count_ := 0
   chunks_ := List 5: "$it" * it
 
-  read -> ByteArray?:
+  read -> string?:
     if call_count_ == chunks_.size:
       return null
     call_count_++
     return chunks_[call_count_ - 1]
 
   full_data -> ByteArray:
-    return (chunks_.join).to_byte_array
+    return (chunks_.join "").to_byte_array
 
 run_client network port/int -> none:
   client := http.Client network

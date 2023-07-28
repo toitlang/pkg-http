@@ -104,7 +104,7 @@ class Connection:
         header_length := int.parse content_length_header
         if not content_length: content_length = header_length
         if content_length != header_length:
-          throw "Content-Length header does not match content length"
+          throw "Content-Length header ($header_length) does not match content length ($content_length)"
       else if content_length:
         headers.set "Content-Length" "$content_length"
 

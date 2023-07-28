@@ -198,7 +198,7 @@ class ResponseWriter:
         --has_body=has_body
 
   write data:
-    write_headers_ STATUS_OK --message=null --content_length=data.size --has_body=true
+    write_headers_ STATUS_OK --message=null --content_length=null --has_body=true
     body_writer_.write data
 
   write_headers_ status_code/int --message/string? --content_length/int? --has_body/bool:
