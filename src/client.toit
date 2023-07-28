@@ -159,8 +159,9 @@ class Client:
       --uri/string
       --headers/Headers?=null:
     parsed := parse_ uri --web_socket=false
-    ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := null
+    try_to_reuse_ parsed: | connection |
+      request = connection.new_request method parsed.path headers
     return request
 
   /**
@@ -177,8 +178,9 @@ class Client:
       --headers/Headers?=null
       --use_tls/bool?=null:
     parsed := parse_ host port path use_tls --web_socket=false
-    ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := null
+    try_to_reuse_ parsed: | connection |
+      request = connection.new_request method parsed.path headers
     return request
 
   /**
@@ -205,8 +207,9 @@ class Client:
         --path=path
         --parse_port_in_host=true
     if not parsed.scheme.starts_with "http": throw "INVALID_SCHEME"
-    ensure_connection_ parsed
-    request := connection_.new_request method parsed.path headers
+    request := null
+    try_to_reuse_ parsed: | connection |
+      request = connection.new_request method parsed.path headers
     return request
 
   static starts_with_ignore_case_ str/string needle/string -> bool:
@@ -343,10 +346,9 @@ class Client:
     headers = headers ? headers.copy : Headers
     MAX_REDIRECTS.repeat:
       nonce := WebSocket.add_client_upgrade_headers_ headers
-      headers.add "Host" parsed.host_with_port
       response/Response? := null
       try_to_reuse_ parsed: | connection |
-        request := connection.new_request GET parsed.path headers
+        request/RequestOutgoing := connection.new_request GET parsed.path headers
         response = request.send
       if follow_redirects and
           (is_regular_redirect_ response.status_code

@@ -12,8 +12,7 @@ main:
   security_store := http.SecurityStoreInMemory
   client := http.Client.tls network
     --security_store=security_store
-    --root_certificates=[certificate_roots.GLOBALSIGN_ROOT_CA,
-                         certificate_roots.GTS_ROOT_R1]
+    --root_certificates=[certificate_roots.GTS_ROOT_R1]
   response := client.get "script.google.com" "/"
   while data := response.body.read:
   response = client.get "www.google.com" "/"

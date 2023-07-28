@@ -116,7 +116,7 @@ class Connection:
     else:
       // Return a writer that doesn't accept any data.
       body_writer = ContentLengthWriter this writer_ 0
-      if not headers.matches "Connection" "upgrade":
+      if not headers.matches "Connection" "Upgrade":
         headers.set "Content-Length" "0"
 
     // Set this before doing blocking operations on the socket, so that we
@@ -331,8 +331,8 @@ A $tcp.Socket doesn't support ungetting data that was already read for it, so we
 */
 class DetachedSocket_ implements tcp.Socket:
   socket_/tcp.Socket
-  buffered_/ByteArray? := null
-  constructor .socket_ buffered_:
+  buffered_/ByteArray? := ?
+  constructor .socket_ .buffered_:
 
   local_address -> net.SocketAddress:
     return socket_.local_address
