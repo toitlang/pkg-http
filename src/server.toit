@@ -191,27 +191,32 @@ class ResponseWriter:
   write_headers status_code/int --message/string?=null:
     if body_writer_: throw "headers already written"
     has_body := status_code != STATUS_NO_CONTENT
-    write_headers_ status_code --message=message --has_body=has_body
+    write_headers_
+        status_code
+        --message=message
+        --content_length=null
+        --has_body=has_body
 
   write data:
-    write_headers_ STATUS_OK --message=null --has_body=true
+    write_headers_ STATUS_OK --message=null --content_length=null --has_body=true
     body_writer_.write data
 
-  write_headers_ status_code/int --message/string? --has_body/bool:
+  write_headers_ status_code/int --message/string? --content_length/int? --has_body/bool:
     if body_writer_: return
     body_writer_ = connection_.send_headers
         "$VERSION $status_code $(message or (status_message status_code))\r\n"
         headers
         --is_client_request=false
+        --content_length=content_length
         --has_body=has_body
 
   redirect status_code/int location/string --message/string?=null --body/string?=null -> none:
     headers.set "Location" location
     if body and body.size > 0:
-      write_headers_ status_code --message=message --has_body=true
+      write_headers_ status_code --message=message --content_length=body.size --has_body=true
       body_writer_.write body
     else:
-      write_headers_ status_code --message=message --has_body=false
+      write_headers_ status_code --message=message --content_length=null --has_body=false
 
   // Returns true if the connection was closed due to an error.
   close_on_exception_ message/string -> bool:
@@ -226,7 +231,10 @@ class ResponseWriter:
     else:
       // We don't have a body writer, so perhaps we didn't send a response
       // yet.  Send a 500 to indicate an internal server error.
-      write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=message --has_body=false
+      write_headers_ STATUS_INTERNAL_SERVER_ERROR
+          --message=message
+          --content_length=null
+          --has_body=false
       return false
 
   // Close the response.  We call this automatically after the block if the
@@ -246,7 +254,10 @@ class ResponseWriter:
       // Nothing was written, yet we are already closing.  This indicates
       // We return a 500 error code and log the issue.  We don't need to close
       // the connection.
-      write_headers_ STATUS_INTERNAL_SERVER_ERROR --message=null --has_body=false
+      write_headers_ STATUS_INTERNAL_SERVER_ERROR
+          --message=null
+          --content_length=null
+          --has_body=false
       logger_.info "Returned from router without any data for the client"
 
   detach -> tcp.Socket:

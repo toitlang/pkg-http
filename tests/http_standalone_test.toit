@@ -8,6 +8,7 @@ import expect show *
 import http
 import http.connection show is_close_exception_
 import net
+import reader
 
 import .cat
 
@@ -25,6 +26,19 @@ POST_DATA ::= {
     "/&%": "slash",
     "slash": "/&%"
 }
+
+class NonSizedTestReader implements reader.Reader:
+  call_count_ := 0
+  chunks_ := List 5: "$it" * it
+
+  read -> string?:
+    if call_count_ == chunks_.size:
+      return null
+    call_count_++
+    return chunks_[call_count_ - 1]
+
+  full_data -> ByteArray:
+    return (chunks_.join "").to_byte_array
 
 run_client network port/int -> none:
   client := http.Client network
@@ -175,6 +189,16 @@ run_client network port/int -> none:
   response11 := client.post_form --host="localhost" --port=port --path="/post_form" POST_DATA
   expect_equals 200 response11.status_code
 
+  test_reader := NonSizedTestReader
+  request = client.new_request "POST" --host="localhost" --port=port --path="/post_chunked"
+  request.body = test_reader
+  response12 := request.send
+  expect_equals 200 response12.status_code
+  response_data := #[]
+  while chunk := response12.body.read:
+    response_data += chunk
+  expect_equals test_reader.full_data response_data
+
   client.close
 
 expect_json response/http.Response [verify_block]:
@@ -206,6 +230,9 @@ start_server network -> int:
 
 listen server server_socket my_port other_port:
   server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
+    if request.method == "POST" and request.path != "/post_chunked":
+      expect_not_null (request.headers.single "Content-Length")
+
     if request.path == "/":
       response_writer.headers.set "Content-Type" "text/html"
       response_writer.write INDEX_HTML
@@ -268,5 +295,9 @@ listen server server_socket my_port other_port:
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
       response_writer.redirect http.STATUS_SEE_OTHER "http://localhost:$my_port/cat.png"
+    else if request.path == "/post_chunked":
+      response_writer.headers.set "Content-Type" "text/plain"
+      while data := request.body.read:
+        response_writer.write data
     else:
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
