@@ -21,6 +21,8 @@ main:
   expect_equals "echo.websocket.events sponsored by Lob.com" greeting
   print greeting
   web_socket.send MSG1
+  web_socket.ping "Hello"
+  web_socket.ping #[0xff, 0x80, 0x23]
   echo := web_socket.receive
   expect_equals MSG1 echo
   web_socket.send MSG2
