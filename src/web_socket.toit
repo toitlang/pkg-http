@@ -411,7 +411,9 @@ class WebSocketReader implements reader.Reader:
           owner_ = null
           return null
       if owner_ == null: return null  // Closed.
-      fragment_reader_ = owner_.next_fragment_
+      next_fragment := owner_.next_fragment_
+      if not next_fragment: return null // Closed.
+      fragment_reader_ = next_fragment
       if fragment_reader_.is_ping or fragment_reader_.is_pong:
         throw "UNIMPLEMENTED_PING"
       else if not fragment_reader_.is_continuation:
