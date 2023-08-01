@@ -188,6 +188,10 @@ class WebSocket:
   /**
   Sends a ByteArray or string as a framed WebSockets message.
   Strings are sent as text, whereas byte arrays are sent as binary.
+  The message is sent as one large fragment, which means we cannot
+    send pings and pongs until it is done.
+  Calls to this method will block until the previous message has been
+    completely sent.
   */
   send data -> none:
     writer := start_sending --size=data.size --opcode=((data is string) ? OPCODE_TEXT_ : OPCODE_BINARY_)
@@ -205,7 +209,8 @@ class WebSocket:
   The message is sent as a text message if the first data written to the
     writer is a string, otherwise as a binary message.
   Returns a writer, which must be completed (all data sent, and closed) before
-    this method can be called again.
+    another message can be sent.  Calls to $send and $start_sending will
+    block until the previous writer is completed.
   */
   start_sending --size/int?=null --opcode/int?=null -> WebSocketWriter:
     writer_semaphore_.down
@@ -213,6 +218,13 @@ class WebSocket:
     current_writer_ = WebSocketWriter.private_ this size --masking=is_client_ --opcode=opcode
     return current_writer_
 
+  /**
+  Send a ping with the given $payload, which is a string or a ByteArray.
+  Any pongs we get back are ignored.
+  If we are in the middle of sending a long message that was started with
+    $start_sending then the ping may be interleaved with the fragments of the
+    long message.
+  */
   ping payload -> none:
     schedule_ping_ payload OPCODE_PING_
 
