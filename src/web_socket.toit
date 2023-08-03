@@ -276,14 +276,17 @@ class WebSocket:
   close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
     if current_writer_ == null:
       writer_semaphore_.down
-      // If we are not in the middle of a message, we can send a close packet.
-      catch:  // Catch because the write end may already be closed.
-        writer := WebSocketWriter.private_ this 2 --masking=is_client_ --opcode=OPCODE_CLOSE_
-        payload := ByteArray 2
-        BIG_ENDIAN.put_uint16 payload 0 status_code
-        writer.write payload
-        writer.close
-      writer_semaphore_.up
+      try:
+        // If we are not in the middle of a message, we can send a close packet.
+        catch:  // Catch because the write end may already be closed.
+          writer := WebSocketWriter.private_ this 2 --masking=is_client_ --opcode=OPCODE_CLOSE_
+          payload := ByteArray 2
+          BIG_ENDIAN.put_uint16 payload 0 status_code
+          writer.write payload
+          writer.close
+      finally:
+        critical_do --no-respect_deadline:
+          writer_semaphore_.up
     catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
     if current_writer_:
       current_writer_ = null
