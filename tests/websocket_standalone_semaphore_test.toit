@@ -1,15 +1,17 @@
-// Copyright (C) 2022 Toitware ApS.
+// Copyright (C) 2023 Toitware ApS.
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/TESTS_LICENSE file.
 
 import expect show *
 import http
+import monitor show Semaphore
 import net
 import http.web_socket show FragmentReader_
 
 // Sets up a web server that can switch to websocket mode on the "/" path.
 // The server just sends back everything it gets.
-// Sets up a client that sends files and expects to receive them back.
+// Sets up a client that sends files on the same connection from two tasks and
+// checks that they are correctly serialized by the semaphore.
 
 main:
   unmark_bytes_test
@@ -25,9 +27,15 @@ run_client network port/int -> none:
 
   web_socket := client.web_socket --host="localhost" --port=port --path="/"
 
-  task:: client_reading web_socket
+  task --background:: client_reading web_socket
 
-  client_sending web_socket
+  semaphore := Semaphore
+
+  3.repeat:
+    task:: client_sending semaphore web_socket
+
+  3.repeat:
+    semaphore.down  // Wait for each of the client writing tasks to terminate.
 
   web_socket.close_write
 
@@ -46,11 +54,12 @@ TEST_PACKETS := [
     "Now is the time for all good men to come to the aid of the party.",
     "æøåßé" * 30,
     "€€£" * 40,
+    "Now is the time for all good men to come to the aid of the party." * 30,
 ]
 
 sent_but_not_reflected := 0
 
-client_sending web_socket -> none:
+client_sending semaphore/Semaphore web_socket -> none:
   TEST_PACKETS.do: | packet |
     2.repeat:
       // Send with a single call to `send`.
@@ -61,35 +70,26 @@ client_sending web_socket -> none:
       writer := web_socket.start_sending
       pos := 0
       ping_sent := false
-      print packet.size
       while pos < packet.size:
         pos += writer.write packet pos
         if pos > 800 and not ping_sent:
-          print "Send ping"
           web_socket.ping "hello"
           ping_sent = true
       writer.close
+  semaphore.up
 
 client_reading web_socket -> none:
-  TEST_PACKETS.do: | packet |
-    // Receive with a reader.
-    2.repeat:
+  while true:
+    packet := null
+    if (random 2) < 2:
       reader := web_socket.start_receiving
       size := 0
-      ba := #[]
-      while ba.size < packet.size:
-        ba += reader.read
-      expect_equals null reader.read
-      expect reader.is_text == (packet is string)
-      if reader.is_text:
-        expect_equals packet ba.to_string
-      else:
-        expect_equals ba packet
-    // Receive with a single call to `receive`.
-    2.repeat:
-      round_trip_packet := web_socket.receive
-      expect_equals packet round_trip_packet
-  web_socket.close
+      while next_packet := reader.read:
+        packet = packet ? (packet + next_packet) : next_packet
+    else:
+      packet = web_socket.receive
+    expect
+        (TEST_PACKETS.contains packet) or (TEST_PACKETS.contains packet.to_string)
 
 start_server network -> int:
   server_socket := network.tcp_listen 0
