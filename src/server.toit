@@ -48,14 +48,14 @@ class Server:
     if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
 
   /**
-  Sets up an HTTP server on the given interface and port.
+  Sets up an HTTP server on the given $network and port.
   Use $(listen server_socket handler) if you want to let the system
     pick a free port.
   The handler is called for each incoming request with two arguments:
     The $Request and a $ResponseWriter.
   */
-  listen interface/tcp.Interface port/int handler/Lambda -> none:
-    server_socket := interface.tcp_listen port
+  listen network/tcp.Interface port/int handler/Lambda -> none:
+    server_socket := network.tcp_listen port
     listen server_socket handler
 
   /**
