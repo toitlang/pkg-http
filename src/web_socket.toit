@@ -239,7 +239,8 @@ class WebSocket:
         writer.write payload
         writer.close
       finally:
-        writer_semaphore_.up
+        critical_do --no-respect_deadline:
+          writer_semaphore_.up
 
   writer_close_ writer/WebSocketWriter -> none:
     current_writer_ = null
