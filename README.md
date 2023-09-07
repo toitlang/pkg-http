@@ -1,6 +1,6 @@
 # Toit package: http
 
-A HTTP server and client.
+An HTTP server and client.
 
 This package implements the HTTP/1.1 protocol. It supports 'GET' and 'POST'
 requests with convenience methods, and can be used to implement REST servers.
