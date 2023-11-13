@@ -129,13 +129,6 @@ class WebSocket:
     masking_length_byte := reader.read-byte
     masking := (masking_length_byte & MASKING_FLAG_) != 0
     len := masking_length_byte & 0x7f
-    header_size_needed := ?
-    if len == TWO_BYTE_SIZE_:
-      header_size_needed = masking ? 8 : 4
-    else if len == EIGHT_BYTE_SIZE_:
-      header_size_needed = masking ? 14 : 10
-    else:
-      header_size_needed = masking ? 6 : 2
 
     if len == TWO_BYTE_SIZE_:
       len = reader.big-endian.read-uint16 // BIG_ENDIAN.uint16 pending_ 2
