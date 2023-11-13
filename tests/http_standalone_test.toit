@@ -7,8 +7,8 @@ import encoding.url
 import expect show *
 import http
 import http.connection show is_close_exception_
+import io
 import net
-import reader
 
 import .cat
 
@@ -27,15 +27,15 @@ POST_DATA ::= {
     "slash": "/&%"
 }
 
-class NonSizedTestReader implements reader.Reader:
+class NonSizedTestReader extends Object with io.Reader:
   call_count_ := 0
   chunks_ := List 5: "$it" * it
 
-  read -> string?:
+  consume_ -> ByteArray?:
     if call_count_ == chunks_.size:
       return null
     call_count_++
-    return chunks_[call_count_ - 1]
+    return chunks_[call_count_ - 1].to_byte_array
 
   full_data -> ByteArray:
     return (chunks_.join "").to_byte_array

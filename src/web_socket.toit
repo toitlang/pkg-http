@@ -6,10 +6,9 @@ import binary show BIG_ENDIAN
 import bitmap show blit XOR
 import crypto.sha1 show sha1
 import encoding.base64
+import io
 import monitor show Semaphore
 import net.tcp
-import reader
-import writer
 
 import .headers
 import .request
@@ -39,7 +38,6 @@ Currently does not implement ping and pong packets.
 */
 class WebSocket:
   socket_ /tcp.Socket
-  pending_ /ByteArray := #[]
   current_writer_ /WebSocketWriter? := null
   writer_semaphore_ := Semaphore --count=1
   current_reader_ /WebSocketReader? := null
@@ -49,15 +47,10 @@ class WebSocket:
     is_client_ = client
 
   read_ -> ByteArray?:
-    if pending_.size != 0:
-      result := pending_
-      pending_ = #[]
-      return result
-    return socket_.read
+    return socket_.in.read
 
   unread_ byte_array/ByteArray -> none:
-    assert: pending_.size == 0
-    pending_ = byte_array
+    socket_.in.unget byte_array
 
   /**
   Reads a whole message, returning it as a string or a ByteArray.
@@ -128,18 +121,14 @@ class WebSocket:
   // Reads the header of the next fragment.
   next_fragment_ -> FragmentReader_?:
     if socket_ == null: return null  // Closed.
-    // Named block:
-    get_more := :
-      next := socket_.read
-      if next == null:
-        if pending_.size == 0: return null
-        throw "CONNECTION_CLOSED"
-      pending_ += next
 
-    while pending_.size < 2: get_more.call
+    reader := socket_.in
+    if not reader.try-ensure-buffered 1: return null
 
-    masking := pending_[1] & MASKING_FLAG_ != 0
-    len := pending_[1] & 0x7f
+    control_bits := reader.read-byte
+    masking_length_byte := reader.read-byte
+    masking := (masking_length_byte & MASKING_FLAG_) != 0
+    len := masking_length_byte & 0x7f
     header_size_needed := ?
     if len == TWO_BYTE_SIZE_:
       header_size_needed = masking ? 8 : 4
@@ -148,24 +137,20 @@ class WebSocket:
     else:
       header_size_needed = masking ? 6 : 2
 
-    while pending_.size < header_size_needed: get_more.call
-
     if len == TWO_BYTE_SIZE_:
-      len = BIG_ENDIAN.uint16 pending_ 2
+      len = reader.big-endian.read-uint16 // BIG_ENDIAN.uint16 pending_ 2
     else if len == EIGHT_BYTE_SIZE_:
-      len = BIG_ENDIAN.int64 pending_ 2
+      len = reader.big-endian.read-int64  // BIG_ENDIAN.int64 pending_ 2
 
     masking_bytes := null
     if masking:
-      masking_bytes = pending_.copy (header_size_needed - 4) header_size_needed
+      masking_bytes = reader.read-bytes 4
       if masking_bytes == #[0, 0, 0, 0]:
         masking_bytes = null
-    result := FragmentReader_ this len pending_[0] --masking_bytes=masking_bytes
+    result := FragmentReader_ this len control_bits --masking_bytes=masking_bytes
     if not result.is_ok_:
       close --status_code=STATUS_WEBSOCKET_PROTOCOL_ERROR
       throw "PROTOCOL_ERROR"
-
-    pending_ = pending_[header_size_needed..]
 
     if result.is_close:
       if result.size >= 2:
@@ -187,14 +172,14 @@ class WebSocket:
 
   /**
   Sends a ByteArray or string as a framed WebSockets message.
-  Strings are sent as text, whereas byte arrays are sent as binary.
+  Strings are sent as text, whereas all other data objects are sent as binary.
   The message is sent as one large fragment, which means we cannot
     send pings and pongs until it is done.
   Calls to this method will block until the previous message has been
     completely sent.
   */
-  send data -> none:
-    writer := start_sending --size=data.size --opcode=((data is string) ? OPCODE_TEXT_ : OPCODE_BINARY_)
+  send data/io.Data -> none:
+    writer := start_sending --size=data.byte-size --opcode=((data is string) ? OPCODE_TEXT_ : OPCODE_BINARY_)
     writer.write data
     writer.close
 
@@ -212,7 +197,7 @@ class WebSocket:
     another message can be sent.  Calls to $send and $start_sending will
     block until the previous writer is completed.
   */
-  start_sending --size/int?=null --opcode/int?=null -> WebSocketWriter:
+  start_sending --size/int?=null --opcode/int?=null -> io.CloseableWriter:
     writer_semaphore_.down
     assert: current_writer_ == null
     current_writer_ = WebSocketWriter.private_ this size --masking=is_client_ --opcode=opcode
@@ -246,10 +231,8 @@ class WebSocket:
     current_writer_ = null
     writer_semaphore_.up
 
-  write_ data from=0 to=data.size -> none:
-    written := 0
-    while from < to:
-      from += socket_.write data from to
+  write_ data/io.Data from=0 to=data.byte_size -> none:
+    socket_.out.write data from to
 
   reader_close_ -> none:
     current_reader_ = null
@@ -288,7 +271,7 @@ class WebSocket:
       finally:
         critical_do --no-respect_deadline:
           writer_semaphore_.up
-    catch: socket_.close_write  // Catch because we allow double close, and a previous close causes an exception here.
+    socket_.out.close
     if current_writer_:
       current_writer_ = null
       writer_semaphore_.up
@@ -352,7 +335,7 @@ class WebSocket:
 /**
 A writer for writing a single message on a WebSocket connection.
 */
-class WebSocketWriter:
+class WebSocketWriter extends Object with io.CloseableWriter:
   owner_ /WebSocket? := ?
   size_ /int?
   remaining_in_fragment_ /int := 0
@@ -366,7 +349,7 @@ class WebSocketWriter:
     if size_ and opcode:
       remaining_in_fragment_ = write_fragment_header_ size_ opcode size_
 
-  write data from=0 to=data.size -> int:
+  try_write_ data/io.Data from/int to/int -> int:
     if owner_ == null: throw "ALREADY_CLOSED"
     total_size := to - from
     while from != to:
@@ -440,7 +423,7 @@ class WebSocketWriter:
 
     return remaining_in_fragment
 
-  close:
+  close_:
     if remaining_in_fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
     if owner_:
       if size_ == null:
@@ -457,16 +440,14 @@ class WebSocketWriter:
 /**
 A reader for an individual message sent to us.
 */
-class WebSocketReader implements reader.Reader:
+class WebSocketReader extends Object with io.Reader:
   owner_ /WebSocket? := ?
   is_text /bool
   fragment_reader_ /FragmentReader_ := ?
 
   /**
-  If the size of the incoming message is known, then it is returned, otherwise
-    null is returned.
-  Since a normal size method cannot return null, the WebSocketReader does not
-    implement $reader.SizedReader.
+  The size of the incoming message if known.
+  Null, otherwise.
   */
   size /int?
 
@@ -477,7 +458,7 @@ class WebSocketReader implements reader.Reader:
   Note that even if the message is transmitted as text, it arrives as
     ByteArrays.
   */
-  read -> ByteArray?:
+  consume_ -> ByteArray?:
     result := fragment_reader_.read
     if result == null:
       if fragment_reader_.is_fin:

@@ -2,9 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import io
 import net.tcp
-import reader
-import writer
 
 import .connection
 import .headers
@@ -23,9 +22,15 @@ class Response:
   You must read to the end of the response (body.read returns null) before
     you can reuse the connection.
   */
-  body/reader.Reader
+  body/io.Reader
 
   constructor .connection_ .version .status_code .status_message .headers .body:
+
+  /**
+  The length of the response body, if known.
+  */
+  content_length -> int?:
+    return body.size
 
   stringify: return "$status_code: $status_message"
 
@@ -42,4 +47,4 @@ class Response:
     create a new one.
   */
   drain -> none:
-    catch: while body.read: null
+    catch: body.drain
