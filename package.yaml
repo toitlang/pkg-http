@@ -2,5 +2,5 @@
 name: http
 description: An HTTP server and client.
 environment:
-  # alpha 79 added session resume in TLS.
-  sdk: ^2.0.0-alpha.79
+  # Now depends on the new io library.
+  sdk: ^2.0.0-alpha.121
