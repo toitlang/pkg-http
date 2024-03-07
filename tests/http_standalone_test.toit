@@ -318,7 +318,7 @@ listen server server_socket my_port other_port:
       response_writer.headers.set "Content-Type" "text/plain"
       response_writer.write "Response with parameters"
       POST_DATA.do: | key/string value/string |
-        expect-equals value request.query.parameters[key]
+        expect_equals value request.query.parameters[key]
     else:
       print "request.query.resource = '$request.query.resource'"
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
