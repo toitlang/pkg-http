@@ -175,9 +175,10 @@ class Client:
       --host/string
       --port/int?=null
       --path/string="/"
+      --parameters/Map?=null
       --headers/Headers?=null
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls parameters --web_socket=false
     request := null
     try_to_reuse_ parsed: | connection |
       request = connection.new_request method parsed.path headers
@@ -254,9 +255,10 @@ class Client:
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
+      --parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls parameters --web_socket=false
     return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
@@ -337,9 +339,10 @@ class Client:
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
+      --parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls --web_socket
+    parsed := parse_ host port path use_tls parameters --web_socket
     return web_socket_ parsed headers follow_redirects
 
   web_socket_ parsed/ParsedUri_ headers/Headers? follow_redirects/bool -> WebSocket:
@@ -422,10 +425,11 @@ class Client:
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
+      --parameters/Map?=null
       --content_type/string?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls parameters --web_socket=false
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
   parse_ uri/string --web_socket/bool -> ParsedUri_:
@@ -439,10 +443,13 @@ class Client:
 
   /// Rather than verbose named args, this private method has the args in the
   /// order in which they appear in a URI.
-  parse_ host/string port/int? path/string use_tls/bool? --web_socket/bool -> ParsedUri_:
+  parse_ host/string port/int? path/string use_tls/bool? parameters/Map? --web_socket/bool -> ParsedUri_:
     default_scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
         ? (web_socket ? "wss" : "https")
         : (web_socket ? "ws" : "http")
+    if parameters and parameters.size != 0:
+      path += "?"
+      path += (url_encode_ parameters).to_string
     return ParsedUri_.private_
         --scheme=default_scheme
         --host=host
@@ -529,11 +536,12 @@ class Client:
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
+      --parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
-    parsed := parse_ host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls parameters --web_socket=false
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
   /**
@@ -580,15 +588,13 @@ class Client:
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
+      --parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls --web_socket=false
+    parsed := parse_ host port path use_tls parameters --web_socket=false
     return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
 
-
-  post_form_ map/Map parsed/ParsedUri_ -> Response
-      --headers/Headers?
-      --follow_redirects/bool=true:
+  url_encode_ map/Map -> ByteArray:
     buffer := bytes.Buffer
     first := true
     map.do: | key value |
@@ -605,7 +611,12 @@ class Client:
       buffer.write "="
       buffer.write
         url.encode value
-    encoded := buffer.bytes
+    return buffer.bytes
+
+  post_form_ map/Map parsed/ParsedUri_ -> Response
+      --headers/Headers?
+      --follow_redirects/bool=true:
+    encoded := url_encode_ map
 
     return post_ encoded parsed --headers=headers --content_type="application/x-www-form-urlencoded" --follow_redirects=follow_redirects
 

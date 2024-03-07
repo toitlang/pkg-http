@@ -199,6 +199,19 @@ run_client network port/int -> none:
     response_data += chunk
   expect_equals test_reader.full_data response_data
 
+  response13 := client.get --host="localhost" --port=port --path="/get_with_parameters" --parameters=POST_DATA
+  response_data = #[]
+  while chunk := response13.body.read:
+    response_data += chunk
+  expect_equals "Response with parameters" response_data.to_string
+
+  request = client.new_request "GET" --host="localhost" --port=port --path="/get_with_parameters" --parameters=POST_DATA
+  response14 := request.send
+  expect_equals 200 response14.status_code
+  while chunk := response13.body.read:
+    response_data += chunk
+  expect_equals "Response with parameters" response_data.to_string
+
   client.close
 
 expect_json response/http.Response [verify_block]:
@@ -233,49 +246,51 @@ listen server server_socket my_port other_port:
     if request.method == "POST" and request.path != "/post_chunked":
       expect_not_null (request.headers.single "Content-Length")
 
-    if request.path == "/":
+    resource := request.query.resource
+
+    if resource == "/":
       response_writer.headers.set "Content-Type" "text/html"
       response_writer.write INDEX_HTML
-    else if request.path == "/foo.json":
+    else if resource == "/foo.json":
       response_writer.headers.set "Content-Type" "application/json"
       response_writer.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
-    else if request.path == "/cat.png":
+    else if resource == "/cat.png":
       response_writer.headers.set "Content-Type" "image/png"
       response_writer.write CAT
-    else if request.path == "/redirect_from":
+    else if resource == "/redirect_from":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_back"
-    else if request.path == "/redirect_back":
+    else if resource == "/redirect_back":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/foo.json"
-    else if request.path == "/subdir/redirect_relative":
+    else if resource == "/subdir/redirect_relative":
       response_writer.redirect http.STATUS_FOUND "bar.json"
-    else if request.path == "/subdir/bar.json":
+    else if resource == "/subdir/bar.json":
       response_writer.headers.set "Content-Type" "application/json"
       response_writer.write
         json.encode {"bar": 345 }
-    else if request.path == "/subdir/redirect_absolute":
+    else if resource == "/subdir/redirect_absolute":
       response_writer.redirect http.STATUS_FOUND "/foo.json"
-    else if request.path == "/redirect_loop":
+    else if resource == "/redirect_loop":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_loop"
-    else if request.path == "/204_no_content":
+    else if resource == "/204_no_content":
       response_writer.headers.set "X-Toit-Message" "Nothing more to say"
       response_writer.write_headers http.STATUS_NO_CONTENT
-    else if request.path == "/500_because_nothing_written":
+    else if resource == "/500_because_nothing_written":
       // Forget to write anything - the server should send 500 - Internal error.
-    else if request.path == "/500_because_throw_before_headers":
+    else if resource == "/500_because_throw_before_headers":
       throw "** Expect a stack trace here caused by testing: throws_before_headers **"
-    else if request.path == "/hard_close_because_wrote_too_little":
+    else if resource == "/hard_close_because_wrote_too_little":
       response_writer.headers.set "Content-Length" "2"
       response_writer.write "x"  // Only writes half the message.
-    else if request.path == "/hard_close_because_throw_after_headers":
+    else if resource == "/hard_close_because_throw_after_headers":
       response_writer.headers.set "Content-Length" "2"
       response_writer.write "x"  // Only writes half the message.
       throw "** Expect a stack trace here caused by testing: throws_after_headers **"
-    else if request.path == "/post_json":
+    else if resource == "/post_json":
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
         response_writer.write data
-    else if request.path == "/post_form":
+    else if resource == "/post_form":
       expect_equals "application/x-www-form-urlencoded" (request.headers.single "Content-Type")
       response_writer.headers.set "Content-Type" "text/plain"
       str := ""
@@ -291,13 +306,19 @@ listen server server_socket my_port other_port:
       POST_DATA.do: | key value |
         expect_equals POST_DATA[key] map[key]
       response_writer.write "OK"
-    else if request.path == "/post_json_redirected_to_cat":
+    else if resource == "/post_json_redirected_to_cat":
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
       response_writer.redirect http.STATUS_SEE_OTHER "http://localhost:$my_port/cat.png"
-    else if request.path == "/post_chunked":
+    else if resource == "/post_chunked":
       response_writer.headers.set "Content-Type" "text/plain"
       while data := request.body.read:
         response_writer.write data
+    else if request.query.resource == "/get_with_parameters":
+      response_writer.headers.set "Content-Type" "text/plain"
+      response_writer.write "Response with parameters"
+      POST_DATA.do: | key/string value/string |
+        expect-equals value request.query.parameters[key]
     else:
+      print "request.query.resource = '$request.query.resource'"
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
