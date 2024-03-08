@@ -74,7 +74,7 @@ class RequestIncoming extends Request:
   /// The full path of the request, eg. "/page?id=123".
   path/string
   /// The parsed version of the path.  For routing purposes use query.resource.
-  query/url.QueryString
+  query_/url.QueryString? := null
   headers/Headers
   /// The HTTP version.
   version/string
@@ -86,7 +86,11 @@ class RequestIncoming extends Request:
   body/reader.Reader
 
   constructor.private_ .connection_ .body .method .path .version .headers:
-    query = url.QueryString.parse path
+
+  query -> url.QueryString:
+    if not query_:
+      query_ = url.QueryString.parse path
+    return query_
 
   content_length -> int?:
     if body is ContentLengthReader:

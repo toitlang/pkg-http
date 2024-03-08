@@ -199,13 +199,13 @@ run_client network port/int -> none:
     response_data += chunk
   expect_equals test_reader.full_data response_data
 
-  response13 := client.get --host="localhost" --port=port --path="/get_with_parameters" --parameters=POST_DATA
+  response13 := client.get --host="localhost" --port=port --path="/get_with_parameters" --query_parameters=POST_DATA
   response_data = #[]
   while chunk := response13.body.read:
     response_data += chunk
   expect_equals "Response with parameters" response_data.to_string
 
-  request = client.new_request "GET" --host="localhost" --port=port --path="/get_with_parameters" --parameters=POST_DATA
+  request = client.new_request "GET" --host="localhost" --port=port --path="/get_with_parameters" --query_parameters=POST_DATA
   response14 := request.send
   expect_equals 200 response14.status_code
   while chunk := response13.body.read:

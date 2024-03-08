@@ -171,19 +171,22 @@ class Client:
 
   The returned $RequestOutgoing should be sent with $RequestOutgoing.send.
 
-  The $parameters argument is used to encode parameters in the request path.
-    It should not be used for a $POST request. See instead $post_form, which
-    encodes the parameters in the body as expected for a POST request.
+  The $query_parameters argument is used to encode key-value parameters in the
+    request path using the ?key=value&key2=value2&... format.
+
+  Do not use $query_parameters for a $POST request.  See instead $post_form,
+    which encodes the key-value pairs in the body as expected for a POST
+    request.
   */
   new_request method/string -> RequestOutgoing
       --host/string
       --port/int?=null
       --path/string="/"
-      --parameters/Map?=null
+      --query_parameters/Map?=null
       --headers/Headers?=null
       --use_tls/bool?=null:
-    if method == POST and parameters: throw "INVALID_ARGUMENT"
-    parsed := parse_ host port path use_tls parameters --web_socket=false
+    if method == POST and query_parameters: throw "INVALID_ARGUMENT"
+    parsed := parse_ host port path query_parameters use_tls --web_socket=false
     request := null
     try_to_reuse_ parsed: | connection |
       request = connection.new_request method parsed.path headers
@@ -254,16 +257,19 @@ class Client:
 
   The $use_tls argument can be used to override the default TLS usage of the
     client.
+
+  The $query_parameters argument is used to encode key-value parameters in the
+    request path using the ?key=value&key2=value2&... format.
   */
   get -> Response
       --host/string
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
-      --parameters/Map?=null
+      --query_parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls parameters --web_socket=false
+    parsed := parse_ host port path query_parameters use_tls --web_socket=false
     return get_ parsed headers --follow_redirects=follow_redirects
 
   /**
@@ -338,16 +344,19 @@ class Client:
 
   The $use_tls argument can be used to override the default TLS usage of the
     client.
+
+  The $query_parameters argument is used to encode key-value parameters in the
+    request path using the ?key=value&key2=value2&... format.
   */
   web_socket -> WebSocket
       --host/string
       --port/int?=null
       --path/string="/"
       --headers/Headers?=null
-      --parameters/Map?=null
+      --query_parameters/Map?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls parameters --web_socket
+    parsed := parse_ host port path query_parameters use_tls --web_socket
     return web_socket_ parsed headers follow_redirects
 
   web_socket_ parsed/ParsedUri_ headers/Headers? follow_redirects/bool -> WebSocket:
@@ -433,7 +442,7 @@ class Client:
       --content_type/string?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls null --web_socket=false
+    parsed := parse_ host port path null use_tls --web_socket=false
     return post_ data parsed --headers=headers --content_type=content_type --follow_redirects=follow_redirects
 
   parse_ uri/string --web_socket/bool -> ParsedUri_:
@@ -447,13 +456,13 @@ class Client:
 
   /// Rather than verbose named args, this private method has the args in the
   /// order in which they appear in a URI.
-  parse_ host/string port/int? path/string use_tls/bool? parameters/Map? --web_socket/bool -> ParsedUri_:
+  parse_ host/string port/int? path/string query_parameters/Map? use_tls/bool? --web_socket/bool -> ParsedUri_:
     default_scheme := (use_tls == null ? use_tls_by_default_ : use_tls)
         ? (web_socket ? "wss" : "https")
         : (web_socket ? "ws" : "http")
-    if parameters and parameters.size != 0:
+    if query_parameters and not query_parameters.is_empty:
       path += "?"
-      path += (url_encode_ parameters).to_string
+      path += (url_encode_ query_parameters).to_string
     return ParsedUri_.private_
         --scheme=default_scheme
         --host=host
@@ -544,7 +553,7 @@ class Client:
       --use_tls/bool?=null:
     // TODO(florian): we should create the json dynamically.
     encoded := json.encode object
-    parsed := parse_ host port path use_tls null --web_socket=false
+    parsed := parse_ host port path null use_tls --web_socket=false
     return post_ encoded parsed --headers=headers --content_type="application/json" --follow_redirects=follow_redirects
 
   /**
@@ -593,7 +602,7 @@ class Client:
       --headers/Headers?=null
       --follow_redirects/bool=true
       --use_tls/bool?=null:
-    parsed := parse_ host port path use_tls null --web_socket=false
+    parsed := parse_ host port path null use_tls --web_socket=false
     return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
 
   url_encode_ map/Map -> ByteArray:
