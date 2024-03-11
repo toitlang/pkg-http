@@ -5,8 +5,8 @@
 file(GLOB TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test.toit")
 file(GLOB HTTPBIN_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*_test_httpbin.toit")
 
-set(TOIT_EXEC "toit.run" CACHE FILEPATH "The executable used to run the tests")
-set(TPKG_EXEC "toit.pkg" CACHE FILEPATH "The executable used to install the packages")
+set(TOIT_EXEC "toit.run${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "The executable used to run the tests")
+set(TPKG_EXEC "toit.pkg${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "The executable used to install the packages")
 set(TEST_TIMEOUT 40 CACHE STRING "The maximal amount of time each test is allowed to run")
 set(ENABLE_HTTPBIN_TESTS ON CACHE BOOL "Whether to run tests that depend on httpbin.org docker")
 set(USE_HTTPBIN_DOCKER OFF CACHE BOOL "Whether to use the httpbin.org docker container")
