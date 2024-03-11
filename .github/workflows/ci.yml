@@ -10,58 +10,25 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
+        # The versions should contain (at least) the lowest requirement
+        #    and a version that is more up to date.
+        toit-version: [ v2.0.0-alpha.79, latest ]
+        include:
+          - toit-version: v2.0.0-alpha.79
+            version-name: old
+          - toit-version: latest
+            version-name: new
+
+    name: CI - ${{ matrix.os }} - ${{ matrix.version-name }}
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup constants
-        shell: bash
-        run: |
-          TOIT_VERSION=v2.0.0-alpha.79
-          echo "TOIT_VERSION=$TOIT_VERSION" >> $GITHUB_ENV
-          export DOWNLOAD_DIR="${{ github.workspace }}/downloads"
-          echo "DOWNLOAD_DIR=$DOWNLOAD_DIR" >> $GITHUB_ENV
-          if [[ "$RUNNER_OS" = "Linux" ]]; then
-            TOIT_FILE=toit-linux.tar.gz
-            echo "TOIT_EXEC=$DOWNLOAD_DIR/toit/bin/toit.run" >> $GITHUB_ENV
-            echo "TPKG_EXEC=$DOWNLOAD_DIR/toit/bin/toit.pkg" >> $GITHUB_ENV
-          elif [[ "$RUNNER_OS" = "macOS" ]]; then
-            TOIT_FILE=toit-macos.tar.gz
-            echo "TOIT_EXEC=$DOWNLOAD_DIR/toit/bin/toit.run" >> $GITHUB_ENV
-            echo "TPKG_EXEC=$DOWNLOAD_DIR/toit/bin/toit.pkg" >> $GITHUB_ENV
-          elif [[ "$RUNNER_OS" = "Windows" ]]; then
-            TOIT_FILE=toit-windows.tar.gz
-            echo "TOIT_EXEC=$DOWNLOAD_DIR/toit/bin/toit.run.exe" >> $GITHUB_ENV
-            echo "TPKG_EXEC=$DOWNLOAD_DIR/toit/bin/toit.pkg.exe" >> $GITHUB_ENV
-          else
-            echo "UNSUPPORTED RUNNER: $RUNNER_OS"
-            exit 1
-          fi
-
-          echo "TOIT_URL=https://github.com/toitlang/toit/releases/download/$TOIT_VERSION/$TOIT_FILE" >> $GITHUB_ENV
-
-      # Fetch the dependencies. Different for each platform.
-      - name: Install dependencies - Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build
-          ninja --version
-          cmake --version
-      - name: Install dependencies - macOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja
-          ninja --version
-          cmake --version
-      - name: Install dependencies - Windows
-        if: runner.os == 'Windows'
-        run: |
-          choco install ninja
-          ninja --version
-          cmake --version
+      - uses: toitlang/action-setup@v1
+        with:
+          toit-version: ${{ matrix.toit-version }}
 
       - name: Start httpbin - Linux
         if: runner.os == 'Linux'
@@ -70,23 +37,9 @@ jobs:
           docker run -d -p 8765:80 kennethreitz/httpbin
           docker ps
 
-      - uses: suisei-cn/actions-download-file@v1.4.0
-        name: Download Toit
-        with:
-          url: ${{ env.TOIT_URL }}
-          target: ${{ env.DOWNLOAD_DIR }}
-
-      - name: Extract Toit
-        shell: bash
-        run: |
-          cd "$DOWNLOAD_DIR"
-          tar x -f *.tar.gz
-
       - name: Run cmake
-        shell: bash
-        run: |
+        run:
           make rebuild-cmake
-          cmake "-DTOIT_EXEC=$TOIT_EXEC" "-DTPKG_EXEC=$TPKG_EXEC" build
 
       - name: Enable httpbin tests - Linux
         if: runner.os == 'Linux'
@@ -100,10 +53,6 @@ jobs:
         if: runner.os != 'Linux'
         run: |
           cmake -DENABLE_HTTPBIN_TESTS=OFF build
-
-      - name: Install packages
-        run: |
-          make install-pkgs
 
       - name: Test
         run: |
