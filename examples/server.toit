@@ -14,9 +14,10 @@ main:
   tcp_socket := network.tcp_listen 0
   print "Server on http://localhost:$tcp_socket.local_address.port/"
   server := http.Server
-  server.listen tcp_socket:: | request/http.Request writer/http.ResponseWriter |
-    if request.path == "/empty":
-    else if request.path == "/":
+  server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
+    resource := request.query.resource
+    if resource == "/empty":
+    else if resource == "/":
       writer.headers.set "Content-Type" "text/html"
       writer.write """
         <html>
@@ -29,18 +30,18 @@ main:
           </body>
         </html>
         """
-    else if request.path == "/json":
+    else if resource == "/json":
       writer.headers.set "Content-Type" "application/json"
       writer.write
         json.encode ITEMS
-    else if request.path == "/headers":
+    else if resource == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
       writer.write_headers 200
-    else if request.path == "/500":
+    else if resource == "/500":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
       writer.write "Failure\n"
-    else if request.path == "/599":
+    else if resource == "/599":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 599 --message="Dazed and confused"
     else:

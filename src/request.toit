@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
+import encoding.url
 import reader
 import writer
 
@@ -68,9 +69,14 @@ class RequestOutgoing extends Request:
 class RequestIncoming extends Request:
   connection_/Connection := ?
 
+  /// The HTTP method, usually "GET" or "POST".
   method/string
+  /// The full path of the request, eg. "/page?id=123".
   path/string
+  /// The parsed version of the path.  For routing purposes use query.resource.
+  query_/url.QueryString? := null
   headers/Headers
+  /// The HTTP version.
   version/string
 
   /**
@@ -80,6 +86,11 @@ class RequestIncoming extends Request:
   body/reader.Reader
 
   constructor.private_ .connection_ .body .method .path .version .headers:
+
+  query -> url.QueryString:
+    if not query_:
+      query_ = url.QueryString.parse path
+    return query_
 
   content_length -> int?:
     if body is ContentLengthReader:
