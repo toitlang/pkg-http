@@ -27,7 +27,7 @@ POST_DATA ::= {
     "slash": "/&%"
 }
 
-class NonSizedTestReader extends Object with io.Reader:
+class NonSizedTestReader extends io.Reader:
   call_count_ := 0
   chunks_ := List 5: "$it" * it
 
@@ -248,16 +248,17 @@ listen server server_socket my_port other_port:
 
     resource := request.query.resource
 
+    writer := response_writer.out
     if resource == "/":
       response_writer.headers.set "Content-Type" "text/html"
-      response_writer.write INDEX_HTML
+      writer.write INDEX_HTML
     else if resource == "/foo.json":
       response_writer.headers.set "Content-Type" "application/json"
-      response_writer.write
+      writer.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
     else if resource == "/cat.png":
       response_writer.headers.set "Content-Type" "image/png"
-      response_writer.write CAT
+      writer.write CAT
     else if resource == "/redirect_from":
       response_writer.redirect http.STATUS_FOUND "http://localhost:$other_port/redirect_back"
     else if resource == "/redirect_back":
@@ -266,7 +267,7 @@ listen server server_socket my_port other_port:
       response_writer.redirect http.STATUS_FOUND "bar.json"
     else if resource == "/subdir/bar.json":
       response_writer.headers.set "Content-Type" "application/json"
-      response_writer.write
+      writer.write
         json.encode {"bar": 345 }
     else if resource == "/subdir/redirect_absolute":
       response_writer.redirect http.STATUS_FOUND "/foo.json"
@@ -281,15 +282,15 @@ listen server server_socket my_port other_port:
       throw "** Expect a stack trace here caused by testing: throws_before_headers **"
     else if resource == "/hard_close_because_wrote_too_little":
       response_writer.headers.set "Content-Length" "2"
-      response_writer.write "x"  // Only writes half the message.
+      writer.write "x"  // Only writes half the message.
     else if resource == "/hard_close_because_throw_after_headers":
       response_writer.headers.set "Content-Length" "2"
-      response_writer.write "x"  // Only writes half the message.
+      writer.write "x"  // Only writes half the message.
       throw "** Expect a stack trace here caused by testing: throws_after_headers **"
     else if resource == "/post_json":
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
-        response_writer.write data
+        writer.write data
     else if resource == "/post_form":
       expect_equals "application/x-www-form-urlencoded" (request.headers.single "Content-Type")
       response_writer.headers.set "Content-Type" "text/plain"
@@ -305,7 +306,7 @@ listen server server_socket my_port other_port:
       expect_equals POST_DATA.size map.size
       POST_DATA.do: | key value |
         expect_equals POST_DATA[key] map[key]
-      response_writer.write "OK"
+      writer.write "OK"
     else if resource == "/post_json_redirected_to_cat":
       response_writer.headers.set "Content-Type" "application/json"
       while data := request.body.read:
@@ -313,10 +314,10 @@ listen server server_socket my_port other_port:
     else if resource == "/post_chunked":
       response_writer.headers.set "Content-Type" "text/plain"
       while data := request.body.read:
-        response_writer.write data
+        writer.write data
     else if request.query.resource == "/get_with_parameters":
       response_writer.headers.set "Content-Type" "text/plain"
-      response_writer.write "Response with parameters"
+      writer.write "Response with parameters"
       POST_DATA.do: | key/string value/string |
         expect_equals value request.query.parameters[key]
     else:

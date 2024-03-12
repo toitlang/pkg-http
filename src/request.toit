@@ -45,7 +45,7 @@ class RequestOutgoing extends Request:
 
   send -> Response:
     has_body := body != null
-    content_length := has_body ? body.size : null
+    content_length := has_body ? body.content-size : null
     slash := (path.starts_with "/") ? "" : "/"
     body_writer := connection_.send_headers
         "$method $slash$path HTTP/1.1\r\n"
@@ -92,7 +92,7 @@ class RequestIncoming extends Request:
   The length of the body, if known.
   */
   content_length -> int?:
-    return body.size
+    return body.content-size
 
   drain:
     body.drain
