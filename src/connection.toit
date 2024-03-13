@@ -365,6 +365,12 @@ class DetachedSocket_ implements tcp.Socket:
   set_no_delay enabled/bool:
     no_delay = enabled
 
+  in:
+    throw "UNIMPLEMENTED"
+
+  out:
+    throw "UNIMPLEMENTED"
+
 is_close_exception_ exception -> bool:
   return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
       or exception == "Broken pipe"
