@@ -361,10 +361,6 @@ class DetachedSocket_ implements tcp.Socket:
   close -> none:
     socket_.close
 
-  // TODO(kasper): Remove this. Here for backwards compatibility.
-  set_no_delay enabled/bool:
-    no_delay = enabled
-
   in:
     throw "UNIMPLEMENTED"
 
