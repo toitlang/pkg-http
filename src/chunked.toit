@@ -8,13 +8,22 @@ import .connection
 
 /**
 This is an adapter that converts a chunked stream (RFC 2616) to a stream of
-  just the payload bytes. It takes an io.Reader as a constructor argument,
-  and acts like an io.Reader.
+  just the payload bytes. It takes an $io.Reader as a constructor argument,
+  and acts like an $io.Reader.
 
-Deprecated. Use the type $io.Reader instead.
+Deprecated for public use. Use the type $io.Reader instead.
 This class will be made private in the future.
 */
-class ChunkedReader extends Object with io.Reader:
+class ChunkedReader extends ChunkedReader_:
+  constructor connection/Connection reader/io.Reader:
+    super connection reader
+
+/**
+This is an adapter that converts a chunked stream (RFC 2616) to a stream of
+  just the payload bytes. It takes an $io.Reader as a constructor argument,
+  and acts like an $io.Reader.
+*/
+class ChunkedReader_ extends io.Reader:
   connection_/Connection? := null
   reader_/io.Reader? := ?
   left_in_chunk_ := 0 // How much more raw data we are waiting for before the next size line.
@@ -65,10 +74,14 @@ class ChunkedReader extends Object with io.Reader:
     reader_.skip 1
 
 /**
-Deprecated. Use the type $io.CloseableWriter instead.
+Deprecated for public use. Use the type $io.CloseableWriter instead.
 This class will be made private in the future.
 */
-class ChunkedWriter extends Object with io.CloseableWriter:
+class ChunkedWriter extends ChunkedWriter_:
+  constructor connection/Connection writer/io.Writer:
+      super connection writer
+
+class ChunkedWriter_ extends io.CloseableWriter:
   static CRLF_ ::= "\r\n"
 
   connection_/Connection? := null

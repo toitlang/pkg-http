@@ -19,7 +19,6 @@ class Connection:
   location_/ParsedUri_? := null
   // These are writers and readers that have been given to API users.
   current_writer_/io.CloseableWriter? := null
-  // TODO(florian): should this be a closeable reader?
   current_reader_/io.Reader? := null
   write_closed_ := false
 
@@ -42,10 +41,8 @@ class Connection:
   close -> none:
     if socket_:
       socket_.close
-      // TODO(florian): should we close the writer?
       if current_writer_:
         current_writer_.close
-      // TODO(florian): should current_reader be closeable and be closed here?
       socket_ = null
       remove_finalizer this
       write_closed_ = true
@@ -59,12 +56,18 @@ class Connection:
     if call_in_finalizer_ and socket_: call_in_finalizer_.call this
     close
 
+
+  /**
+  Deprecated.
+  */
   drain -> none:
+    drain_
+
+  drain_ -> none:
     if write_closed_:
       current_reader_ = null
       close
     if current_reader_:
-      // TODO(florian): should reader be closeable and be closed here?
       current_reader_.drain
       current_reader_ = null
     if current_writer_:
@@ -77,8 +80,20 @@ class Connection:
   If we are not currently reading from the connection the connection is
     completely closed.  Otherwise the connection will be closed on completing
     the current read.
+
+  Deprecated.
   */
   close_write -> none:
+    close_write_
+
+  /**
+  Indicates to the other side that we won't be writing any more on this
+    connection.  On TCP this means sending a FIN packet.
+  If we are not currently reading from the connection the connection is
+    completely closed.  Otherwise the connection will be closed on completing
+    the current read.
+  */
+  close_write_ -> none:
     if not current_reader_:
       close
     else if socket_:
@@ -116,13 +131,13 @@ class Connection:
         headers.set "Content-Length" "$content_length"
 
       if content_length:
-        body_writer = ContentLengthWriter this writer content_length
+        body_writer = ContentLengthWriter_ this writer content_length
       else:
         needs_to_write_chunked_header = true
-        body_writer = ChunkedWriter this writer
+        body_writer = ChunkedWriter_ this writer
     else:
       // Return a writer that doesn't accept any data.
-      body_writer = ContentLengthWriter this writer 0
+      body_writer = ContentLengthWriter_ this writer 0
       if not headers.matches "Connection" "Upgrade":
         headers.set "Content-Length" "0"
 
@@ -169,7 +184,7 @@ class Connection:
     content_length := content_length_str and (int.parse content_length_str)
     current_reader_ = body_reader_ headers --request=true content_length
 
-    body_reader := current_reader_ or ContentLengthReader this reader 0
+    body_reader := current_reader_ or ContentLengthReader_ this reader 0
     return RequestIncoming.private_ this body_reader method path version headers
 
   detach -> tcp.Socket:
@@ -197,7 +212,7 @@ class Connection:
       content_length := content_length_str and (int.parse content_length_str)
       current_reader_ = body_reader_ headers --request=false --status_code=status_code content-length
 
-      body_reader := current_reader_ or ContentLengthReader this reader 0
+      body_reader := current_reader_ or ContentLengthReader_ this reader 0
       return Response this version status_code status_message headers body_reader
 
     finally:
@@ -208,14 +223,14 @@ class Connection:
     reader := socket_.in
     if content_length:
       if content_length == 0: return null  // No read is needed to drain this response.
-      return ContentLengthReader this reader content_length
+      return ContentLengthReader_ this reader content_length
 
     // The only transfer encodings we support are 'identity' and 'chunked',
     // which are both required by HTTP/1.1.
     T_E ::= "Transfer-Encoding"
     if headers.single T_E:
       if headers.matches T_E "chunked":
-        return ChunkedReader this reader
+        return ChunkedReader_ this reader
       else if not headers.matches T_E "identity":
         throw "No support for $T_E: $(headers.single T_E)"
 
@@ -233,7 +248,7 @@ class Connection:
     // transfer succeeded.  Incidentally this also means the connection
     // can't be reused, but that should happen automatically because it
     // is closed.
-    return UnknownContentLengthReader this reader
+    return UnknownContentLengthReader_ this reader
 
   // Optional whitespace is spaces and tabs.
   is_whitespace_ char:
@@ -276,38 +291,46 @@ class Connection:
       current_writer_ = null
 
 /**
-Deprecated. Use the type $io.Reader instead.
+Deprecated for public use. Use the type $io.Reader instead.
 This class will be made private in the future.
 */
-class ContentLengthReader extends Object with io.Reader:
+class ContentLengthReader extends ContentLengthReader_:
+  constructor connection/Connection reader/io.Reader size/int:
+    super connection reader size
+
+class ContentLengthReader_ extends io.Reader:
   connection_/Connection
   reader_/io.Reader
 
-  size/int
+  content-size/int
 
-  constructor .connection_ .reader_ .size:
+  constructor .connection_ .reader_ .content-size:
 
   /**
-  Deprecated. Use $size instead.
+  Deprecated. Use $content-size instead.
   */
   content_length -> int:
-    return size
+    return content-size
 
   consume_ -> ByteArray?:
-    if consumed >= size:
+    if processed >= content-size:
       connection_.reading_done_ this
       return null
-    data := reader_.read --max_size=(size - consumed)
+    data := reader_.read --max_size=(content-size - processed)
     if not data:
       connection_.close
       throw io.Reader.UNEXPECTED_END_OF_READER
     return data
 
 /**
-Deprecated. Use the type $io.Reader instead.
+Deprecated for public use. Use the type $io.Reader instead.
 This class will be made private in the future.
 */
-class UnknownContentLengthReader extends Object with io.Reader:
+class UnknownContentLengthReader extends UnknownContentLengthReader_:
+  constructor connection/Connection reader/io.Reader:
+    super connection reader
+
+class UnknownContentLengthReader_ extends io.Reader:
   connection_/Connection
   reader_/io.Reader
 
@@ -321,7 +344,7 @@ class UnknownContentLengthReader extends Object with io.Reader:
     return data
 
 /**
-Deprecated. Use the type $io.CloseableWriter instead.
+Deprecated for public use. Use the type $io.CloseableWriter instead.
 */
 interface BodyWriter:
   write data -> int
@@ -329,10 +352,14 @@ interface BodyWriter:
   close -> none
 
 /**
-Deprecated. Use the type $io.CloseableWriter instead.
+Deprecated for public use. Use the type $io.CloseableWriter instead.
 This class will be made private in the future.
 */
-class ContentLengthWriter extends Object with io.CloseableWriter implements BodyWriter:
+class ContentLengthWriter extends ContentLengthWriter_:
+  constructor connection/Connection writer/io.Writer content_length/int:
+    super connection writer content_length
+
+class ContentLengthWriter_ extends io.CloseableWriter implements BodyWriter:
   connection_/Connection? := null
   writer_/io.Writer
   content_length_/int := ?
@@ -340,7 +367,7 @@ class ContentLengthWriter extends Object with io.CloseableWriter implements Body
   constructor .connection_ .writer_ .content_length_:
 
   is_done -> bool:
-    return written >= content_length_
+    return processed >= content_length_
 
   try_write_ data/io.Data from/int to/int -> int:
     return writer_.try_write data from to

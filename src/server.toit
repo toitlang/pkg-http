@@ -111,7 +111,7 @@ class Server:
             detached := false
             e := catch --trace=(: not is_close_exception_ it and it != DEADLINE_EXCEEDED_ERROR):
               detached = run_connection_ connection handler logger
-            connection.close_write
+            connection.close_write_
             close_logger := e ? logger.with_tag "reason" e : logger
             if detached:
               close_logger.debug "client socket detached"
@@ -264,7 +264,7 @@ class ResponseWriter extends Object with io.OutMixin:
   close -> none:
     close_writer_
     if body_writer_:
-      too_little := content_length_ ? (body_writer_.written < content_length_) : false
+      too_little := content_length_ ? (body_writer_.processed < content_length_) : false
       body_writer_.close
       if too_little:
         // This is typically the case if the user's code set a Content-Length

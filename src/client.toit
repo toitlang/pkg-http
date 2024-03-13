@@ -681,7 +681,7 @@ class Client:
   ensure_connection_ location/ParsedUri_ -> bool:
     if connection_ and connection_.is_open_:
       if location.can_reuse_connection connection_.location_:
-        connection_.drain  // Remove any remnants of previous requests.
+        connection_.drain_  // Remove any remnants of previous requests.
         return true
       // Hostname etc. didn't match so we need a new connection.
       connection_.close

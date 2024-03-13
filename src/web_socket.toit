@@ -328,7 +328,7 @@ class WebSocket:
 /**
 A writer for writing a single message on a WebSocket connection.
 */
-class WebSocketWriter extends Object with io.CloseableWriter:
+class WebSocketWriter extends io.CloseableWriter:
   owner_ /WebSocket? := ?
   size_ /int?
   remaining_in_fragment_ /int := 0
@@ -433,7 +433,7 @@ class WebSocketWriter extends Object with io.CloseableWriter:
 /**
 A reader for an individual message sent to us.
 */
-class WebSocketReader extends Object with io.Reader:
+class WebSocketReader extends io.Reader:
   owner_ /WebSocket? := ?
   is_text /bool
   fragment_reader_ /FragmentReader_ := ?

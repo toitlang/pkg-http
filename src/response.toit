@@ -30,7 +30,7 @@ class Response:
   The length of the response body, if known.
   */
   content_length -> int?:
-    return body.size
+    return body.content-size
 
   stringify: return "$status_code: $status_message"
 

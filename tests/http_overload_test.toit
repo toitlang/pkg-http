@@ -53,15 +53,16 @@ start_server network -> int:
 
 listen server server_socket my_port:
   server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
+    out := response-writer.out
     if request.path == "/":
       response_writer.headers.set "Content-Type" "text/html"
-      response_writer.write INDEX_HTML
+      out.write INDEX_HTML
     else if request.path == "/foo.json":
       response_writer.headers.set "Content-Type" "application/json"
-      response_writer.write
+      out.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
     else if request.path == "/cat.png":
       response_writer.headers.set "Content-Type" "image/png"
-      response_writer.write CAT
+      out.write CAT
     else:
       response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
