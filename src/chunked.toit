@@ -87,11 +87,11 @@ class ChunkedWriter_ extends io.CloseableWriter:
   connection_/Connection? := null
   writer_/io.Writer
 
+  constructor .connection_ .writer_:
+
   // We don't know the amount of data ahead of time, so it may already be done.
   is_done_ -> bool:
     return true
-
-  constructor .connection_ .writer_:
 
   try_write_ data/io.Data from/int to/int -> int:
     size := to - from
