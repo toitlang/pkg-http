@@ -2,12 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
-import bytes
 import encoding.json
 import encoding.url
+import io
 import net
 import net.tcp
-import reader
 import tls
 
 import .connection
@@ -207,6 +206,8 @@ class Client:
   - suffixing the $host parameter with ":port", for example `localhost:8080`.
 
   If neither is specified then the default port is used.
+
+  Deprecated. Use $(new_request method --host) instead.
   */
   new_request method/string host/string --port/int?=null path/string --headers/Headers?=null -> RequestOutgoing:
     parsed := ParsedUri_.private_
@@ -493,7 +494,7 @@ class Client:
       response := null
       try_to_reuse_ parsed: | connection |
         request := connection.new_request POST parsed.path headers
-        request.body = bytes.Reader data
+        request.body = io.Reader data
         response = request.send
 
       if follow_redirects and is_regular_redirect_ response.status_code:
@@ -606,7 +607,7 @@ class Client:
     return post_form_ map parsed --headers=headers --follow_redirects=follow_redirects
 
   url_encode_ map/Map -> ByteArray:
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     first := true
     map.do: | key value |
       if key is not string: throw "WRONG_OBJECT_TYPE"
@@ -680,7 +681,7 @@ class Client:
   ensure_connection_ location/ParsedUri_ -> bool:
     if connection_ and connection_.is_open_:
       if location.can_reuse_connection connection_.location_:
-        connection_.drain  // Remove any remnants of previous requests.
+        connection_.drain_  // Remove any remnants of previous requests.
         return true
       // Hostname etc. didn't match so we need a new connection.
       connection_.close

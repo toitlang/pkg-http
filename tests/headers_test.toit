@@ -2,9 +2,9 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/TESTS_LICENSE file.
 
-import bytes
 import expect show *
 import http
+import io
 
 main:
   test_from_map
@@ -16,7 +16,7 @@ The $http.Headers class has a stringify method that does pretty much
   the same, but we don't want to rely on `stringify` since that could change.
 */
 stringify headers/http.Headers -> string:
-  buffer := bytes.Buffer
+  buffer := io.Buffer
   headers.write_to buffer
   return buffer.bytes.to_string_non_throwing
 
