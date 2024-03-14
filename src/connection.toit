@@ -170,12 +170,12 @@ class Connection:
     if not reader.try-ensure-buffered 1:
       if write_closed_: close
       return null
-    index_of_first_space := reader.index_of ' ' --throw-if-missing
+    index_of_first_space := reader.index_of ' ' --throw-if-absent
     method := reader.read_string (index_of_first_space)
     reader.skip 1
-    path := reader.read_string (reader.index_of ' ' --throw-if-missing)
+    path := reader.read_string (reader.index_of ' ' --throw-if-absent)
     reader.skip 1
-    version := reader.read_string (reader.index_of '\r' --throw-if-missing)
+    version := reader.read_string (reader.index_of '\r' --throw-if-absent)
     reader.skip 1
     if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
@@ -199,11 +199,11 @@ class Connection:
     if current_reader_: throw "Previous response not completed"
     headers := null
     try:
-      version := reader.read_string (reader.index_of ' ' --throw-if-missing)
+      version := reader.read_string (reader.index_of ' ' --throw-if-absent)
       reader.skip 1
-      status_code := int.parse (reader.read_string (reader.index_of ' ' --throw-if-missing))
+      status_code := int.parse (reader.read_string (reader.index_of ' ' --throw-if-absent))
       reader.skip 1
-      status_message := reader.read_string (reader.index_of '\r' --throw-if-missing)
+      status_message := reader.read_string (reader.index_of '\r' --throw-if-absent)
       reader.skip 1
       if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
