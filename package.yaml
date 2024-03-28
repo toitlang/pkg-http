@@ -2,4 +2,5 @@
 name: http
 description: An HTTP server and client.
 environment:
-  sdk: ^2.0.0-alpha.143
+  # alpha 79 added session resume in TLS.
+  sdk: ^2.0.0-alpha.79
