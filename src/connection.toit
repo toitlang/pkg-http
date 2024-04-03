@@ -377,6 +377,12 @@ class ContentLengthWriter_ extends io.CloseableWriter implements BodyWriter:
       connection_.writing_done_ this
     connection_ = null
 
+  in:
+    throw "UNIMPLEMENTED"
+
+  out:
+    throw "UNIMPLEMENTED"
+
 is_close_exception_ exception -> bool:
   return exception == io.Reader.UNEXPECTED_END_OF_READER
       or exception == "Broken pipe"
