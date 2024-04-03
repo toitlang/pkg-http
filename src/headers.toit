@@ -24,6 +24,13 @@ class Headers:
   constructor.private_ .headers_:
 
   /**
+  The keys of the header.
+  */
+  keys -> List:
+    if not headers_: return []
+    return headers_.keys
+
+  /**
   Returns a single string value for the header or null if the header is not
     present.  If there are multiple values, the last value is returned.
   */
