@@ -325,12 +325,6 @@ class ContentLengthWriter implements BodyWriter:
       connection_.writing_done_ this
     connection_ = null
 
-  in:
-    throw "UNIMPLEMENTED"
-
-  out:
-    throw "UNIMPLEMENTED"
-
 is_close_exception_ exception -> bool:
   return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
       or exception == "Broken pipe"
