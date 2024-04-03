@@ -161,13 +161,14 @@ class Connection:
     body_reader := current_reader_ or ContentLengthReader this reader_ 0
     return RequestIncoming.private_ this body_reader method path version headers
 
-  detach -> DetachedSocket_:
+  detach -> tcp.Socket:
     if not socket_: throw "ALREADY_CLOSED"
     socket := socket_
     socket_ = null
     buffered := reader_.read_bytes reader_.buffered
+    socket.in.unget buffered
     remove_finalizer this
-    return DetachedSocket_ socket buffered
+    return socket
 
   read_response -> Response:
     if current_reader_: throw "Previous response not completed"
@@ -323,53 +324,6 @@ class ContentLengthWriter implements BodyWriter:
     if connection_:
       connection_.writing_done_ this
     connection_ = null
-
-/**
-A $tcp.Socket doesn't support ungetting data that was already read for it, so we
-  have this shim that will first return the data that was read before switching
-  protocols.  Other functions are just passed through.
-*/
-class DetachedSocket_ implements tcp.Socket:
-  socket_/tcp.Socket
-  buffered_/ByteArray? := ?
-  constructor .socket_ .buffered_:
-
-  local_address -> net.SocketAddress:
-    return socket_.local_address
-  peer_address -> net.SocketAddress:
-    return socket_.peer_address
-  mtu -> int:
-    return socket_.mtu
-
-  no_delay -> bool:
-    return socket_.no_delay
-  no_delay= value/bool -> none:
-    socket_.no_delay = value
-
-  read -> ByteArray?:
-    if result := buffered_:
-      buffered_ = null
-      if result.size > 0:
-        return result
-    return socket_.read
-
-  write data from/int=0 to/int=data.size -> int:
-    return socket_.write data from to
-
-  close_write -> none:
-    socket_.close_write
-  close -> none:
-    socket_.close
-
-  // TODO(kasper): Remove this. Here for backwards compatibility.
-  set_no_delay enabled/bool:
-    no_delay = enabled
-
-  in:
-    throw "UNIMPLEMENTED"
-
-  out:
-    throw "UNIMPLEMENTED"
 
 is_close_exception_ exception -> bool:
   return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
