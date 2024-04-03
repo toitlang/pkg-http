@@ -8,6 +8,7 @@ import http
 
 main:
   test_from_map
+  test_keys
 
 /**
 Converts the given $headers to a string.
@@ -35,3 +36,10 @@ test_from_map:
 
   headers = http.Headers.from_map {"foo": ["bar", "baz"], "Foo": "corge"}
   expect_equals "Foo: bar\r\nFoo: baz\r\nFoo: corge\r\n" (stringify headers)
+
+test_keys:
+  headers := http.Headers.from_map {"foo": ["bar", "baz"], "qux": "quux"}
+  expect_list_equals ["Foo", "Qux"] headers.keys
+
+  headers = http.Headers
+  expect_list_equals [] headers.keys
