@@ -3,8 +3,7 @@
 // found in the LICENSE file.
 
 import encoding.url
-import reader
-import writer
+import io
 
 import .headers
 import .chunked
@@ -18,8 +17,8 @@ abstract class Request:
   abstract method -> string
   abstract path -> string
   abstract headers -> Headers
-  abstract body -> reader.Reader?
-  body= value/reader.Reader: throw "NOT_IMPLEMENTED"
+  abstract body -> io.Reader?
+  body= value/io.Reader: throw "NOT_IMPLEMENTED"
   send -> Response: throw "NOT_IMPLEMENTED"
   content_length -> int?: throw "NOT_IMPLEMENTED"
   abstract drain -> none
@@ -40,15 +39,13 @@ class RequestOutgoing extends Request:
     uploaded data.  The body should be set before calling the $send
     method.
   */
-  body/reader.Reader? := null
+  body/io.Reader? := null
 
   constructor.private_ .connection_ .method .path .headers:
 
   send -> Response:
     has_body := body != null
-    content_length := has_body and (body is reader.SizedReader)
-        ? (body as reader.SizedReader).size
-        : null
+    content_length := has_body ? body.content-size : null
     slash := (path.starts_with "/") ? "" : "/"
     body_writer := connection_.send_headers
         "$method $slash$path HTTP/1.1\r\n"
@@ -62,8 +59,7 @@ class RequestOutgoing extends Request:
     body_writer.close
     return connection_.read_response
 
-  drain:
-    if body: while body.read:
+  drain: body.drain
 
 /// Incoming request from an HTTP client like a browser, we are the server.
 class RequestIncoming extends Request:
@@ -83,7 +79,7 @@ class RequestIncoming extends Request:
   Read from this to get any data from the client, eg from a POST
     request.
   */
-  body/reader.Reader
+  body/io.Reader
 
   constructor.private_ .connection_ .body .method .path .version .headers:
 
@@ -92,10 +88,11 @@ class RequestIncoming extends Request:
       query_ = url.QueryString.parse path
     return query_
 
+  /**
+  The length of the body, if known.
+  */
   content_length -> int?:
-    if body is ContentLengthReader:
-      return (body as ContentLengthReader).content_length
-    return null
+    return body.content-size
 
   drain:
-    while body.read:
+    body.drain

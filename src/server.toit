@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 import bytes
+import io
 import log
 import monitor
 import net
 import net.tcp
 import tls
-import writer
 
 import .chunked
 import .connection
@@ -111,7 +111,7 @@ class Server:
             detached := false
             e := catch --trace=(: not is_close_exception_ it and it != DEADLINE_EXCEEDED_ERROR):
               detached = run_connection_ connection handler logger
-            connection.close_write
+            connection.close_write_
             close_logger := e ? logger.with_tag "reason" e : logger
             if detached:
               close_logger.debug "client socket detached"
@@ -141,7 +141,7 @@ class Server:
   run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     if call_in_finalizer_: connection.call_in_finalizer_ = call_in_finalizer_
     while true:
-      request := null
+      request/RequestIncoming? := null
       with_timeout read_timeout:
         request = connection.read_request
       if not request: return false  // Client closed connection.
@@ -171,14 +171,15 @@ class Server:
         throw "request not fully read: $request.path"
       writer.close
 
-class ResponseWriter:
+class ResponseWriter extends Object with io.OutMixin:
   static VERSION ::= "HTTP/1.1"
 
   connection_/Connection? := null
   request_/RequestIncoming
   logger_/log.Logger
   headers_/Headers
-  body_writer_/BodyWriter? := null
+  body_writer_/io.CloseableWriter? := null
+  content_length_/int? := null
   detached_/bool := false
 
   constructor .connection_ .request_ .logger_:
@@ -197,12 +198,24 @@ class ResponseWriter:
         --content_length=null
         --has_body=has_body
 
-  write data:
+  /**
+  Deprecated. Use $(out).write instead.
+  */
+  write data/io.Data:
+    out.write data
+
+  try_write_ data/io.Data from/int to/int -> int:
     write_headers_ STATUS_OK --message=null --content_length=null --has_body=true
-    body_writer_.write data
+    return body_writer_.try_write data from to
 
   write_headers_ status_code/int --message/string? --content_length/int? --has_body/bool:
     if body_writer_: return
+    // Keep track of the content length, so we can report an error if not enough
+    // data is written.
+    if content_length:
+      content_length_ = content_length
+    else if headers.contains "Content-Length":
+      content_length_ = int.parse (headers.single "Content-Length")
     body_writer_ = connection_.send_headers
         "$VERSION $status_code $(message or (status_message status_code))\r\n"
         headers
@@ -210,6 +223,11 @@ class ResponseWriter:
         --content_length=content_length
         --has_body=has_body
 
+  /**
+  Redirects the request to the given $location.
+
+  Neither $write_headers_ nor any write to $out must have happened.
+  */
   redirect status_code/int location/string --message/string?=null --body/string?=null -> none:
     headers.set "Location" location
     if body and body.size > 0:
@@ -237,12 +255,16 @@ class ResponseWriter:
           --has_body=false
       return false
 
-  // Close the response.  We call this automatically after the block if the
-  // user's router did not call it.  Returns true if the connection was closed
-  // due to an error.
+  /**
+  Closes the response.
+
+  This method is automatically called after the block if the
+    user's router did not call it.
+  */
   close -> none:
+    close_writer_
     if body_writer_:
-      too_little := not body_writer_.is_done
+      too_little := content_length_ ? (body_writer_.processed < content_length_) : false
       body_writer_.close
       if too_little:
         // This is typically the case if the user's code set a Content-Length
