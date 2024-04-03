@@ -2,8 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
-import reader
-import writer
+import io
 import net
 import net.tcp
 
@@ -18,12 +17,9 @@ class Connection:
   socket_/tcp.Socket? := null
   host_/string?
   location_/ParsedUri_? := null
-  // Internal reader and writer that are used for the socket.
-  reader_ := ?
-  writer_/writer.Writer
   // These are writers and readers that have been given to API users.
-  current_writer_ := null
-  current_reader_/reader.Reader? := null
+  current_writer_/io.CloseableWriter? := null
+  current_reader_/io.Reader? := null
   write_closed_ := false
 
   // For testing.
@@ -32,8 +28,6 @@ class Connection:
   constructor .socket_ --location/ParsedUri_? --host/string?=null:
     host_ = host
     location_ = location
-    reader_ = reader.BufferedReader socket_
-    writer_ = writer.Writer socket_
     add_finalizer this:: this.finalize_
 
   new_request method/string path/string headers/Headers?=null -> RequestOutgoing:
@@ -54,7 +48,6 @@ class Connection:
       write_closed_ = true
       current_reader_ = null
       current_writer_ = null
-      reader_ = null
 
   finalize_:
     // TODO: We should somehow warn people that they forgot to close the
@@ -63,17 +56,35 @@ class Connection:
     if call_in_finalizer_ and socket_: call_in_finalizer_.call this
     close
 
+
+  /**
+  Deprecated.
+  */
   drain -> none:
+    drain_
+
+  drain_ -> none:
     if write_closed_:
       current_reader_ = null
       close
     if current_reader_:
-      while data := current_reader_.read:
-        null  // Do nothing with the data.
-    current_reader_ = null
+      current_reader_.drain
+      current_reader_ = null
     if current_writer_:
       current_writer_.close
-    current_writer_ = null
+      current_writer_ = null
+
+  /**
+  Indicates to the other side that we won't be writing any more on this
+    connection.  On TCP this means sending a FIN packet.
+  If we are not currently reading from the connection the connection is
+    completely closed.  Otherwise the connection will be closed on completing
+    the current read.
+
+  Deprecated.
+  */
+  close_write -> none:
+    close_write_
 
   /**
   Indicates to the other side that we won't be writing any more on this
@@ -82,20 +93,31 @@ class Connection:
     completely closed.  Otherwise the connection will be closed on completing
     the current read.
   */
-  close_write -> none:
+  close_write_ -> none:
     if not current_reader_:
       close
     else if socket_:
-      socket_.close_write
+      socket_.out.close
       write_closed_ = true
 
-  send_headers -> BodyWriter
+  /**
+  Sends the given $headers.
+
+  If $content_length is not given, it will be extracted from the headers.
+  If neither $content_length nor a Content-Length header is given, the body
+    will be sent in a chunked way.
+
+  If both $content_length and a Content-Length header is given, they must
+    match.
+  */
+  send_headers -> io.CloseableWriter
       status/string headers/Headers
       --is_client_request/bool
       --content_length/int?
       --has_body/bool:
+    writer := socket_.out
     if current_writer_: throw "Previous request not completed"
-    body_writer/BodyWriter := ?
+    body_writer/io.CloseableWriter := ?
     needs_to_write_chunked_header := false
 
     if has_body:
@@ -109,13 +131,13 @@ class Connection:
         headers.set "Content-Length" "$content_length"
 
       if content_length:
-        body_writer = ContentLengthWriter this writer_ content_length
+        body_writer = ContentLengthWriter_ this writer content_length
       else:
         needs_to_write_chunked_header = true
-        body_writer = ChunkedWriter this writer_
+        body_writer = ChunkedWriter_ this writer
     else:
       // Return a writer that doesn't accept any data.
-      body_writer = ContentLengthWriter this writer_ 0
+      body_writer = ContentLengthWriter_ this writer 0
       if not headers.matches "Connection" "Upgrade":
         headers.set "Content-Length" "0"
 
@@ -124,13 +146,13 @@ class Connection:
     if has_body: current_writer_ = body_writer
     socket_.no_delay = false
 
-    writer_.write status
-    headers.write_to writer_
+    writer.write status
+    headers.write_to writer
     if is_client_request and host_:
-      writer_.write "Host: $host_\r\n"
+      writer.write "Host: $host_\r\n"
     if needs_to_write_chunked_header:
-      writer_.write "Transfer-Encoding: chunked\r\n"
-    writer_.write "\r\n"
+      writer.write "Transfer-Encoding: chunked\r\n"
+    writer.write "\r\n"
 
     socket_.no_delay = true
     return body_writer
@@ -143,68 +165,72 @@ class Connection:
     if current_reader_: throw "Previous response not completed"
     if not socket_: return null
 
-    if not reader_.can_ensure 1:
+    reader := socket_.in
+
+    if not reader.try-ensure-buffered 1:
       if write_closed_: close
       return null
-    index_of_first_space := reader_.index_of_or_throw ' '
-    method := reader_.read_string (index_of_first_space)
-    reader_.skip 1
-    path := reader_.read_string (reader_.index_of_or_throw ' ')
-    reader_.skip 1
-    version := reader_.read_string (reader_.index_of_or_throw '\r')
-    reader_.skip 1
-    if reader_.read_byte != '\n': throw "FORMAT_ERROR"
+    index_of_first_space := reader.index_of ' ' --throw-if-absent
+    method := reader.read_string (index_of_first_space)
+    reader.skip 1
+    path := reader.read_string (reader.index_of ' ' --throw-if-absent)
+    reader.skip 1
+    version := reader.read_string (reader.index_of '\r' --throw-if-absent)
+    reader.skip 1
+    if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
     headers := read_headers_
-    current_reader_ = body_reader_ headers --request=true
+    content_length_str := headers.single "Content-Length"
+    content_length := content_length_str and (int.parse content_length_str)
+    current_reader_ = body_reader_ headers --request=true content_length
 
-    body_reader := current_reader_ or ContentLengthReader this reader_ 0
+    body_reader := current_reader_ or ContentLengthReader_ this reader 0
     return RequestIncoming.private_ this body_reader method path version headers
 
   detach -> tcp.Socket:
     if not socket_: throw "ALREADY_CLOSED"
     socket := socket_
     socket_ = null
-    buffered := reader_.read_bytes reader_.buffered
-    socket.in.unget buffered
     remove_finalizer this
     return socket
 
   read_response -> Response:
+    reader := socket_.in
     if current_reader_: throw "Previous response not completed"
     headers := null
     try:
-      version := reader_.read_string (reader_.index_of_or_throw ' ')
-      reader_.skip 1
-      status_code := int.parse (reader_.read_string (reader_.index_of_or_throw ' '))
-      reader_.skip 1
-      status_message := reader_.read_string (reader_.index_of_or_throw '\r')
-      reader_.skip 1
-      if reader_.read_byte != '\n': throw "FORMAT_ERROR"
+      version := reader.read_string (reader.index_of ' ' --throw-if-absent)
+      reader.skip 1
+      status_code := int.parse (reader.read_string (reader.index_of ' ' --throw-if-absent))
+      reader.skip 1
+      status_message := reader.read_string (reader.index_of '\r' --throw-if-absent)
+      reader.skip 1
+      if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
       headers = read_headers_
-      current_reader_ = body_reader_ headers --request=false --status_code=status_code
+      content_length_str := headers.single "Content-Length"
+      content_length := content_length_str and (int.parse content_length_str)
+      current_reader_ = body_reader_ headers --request=false --status_code=status_code content-length
 
-      body_reader := current_reader_ or ContentLengthReader this reader_ 0
+      body_reader := current_reader_ or ContentLengthReader_ this reader 0
       return Response this version status_code status_message headers body_reader
 
     finally:
       if not headers:
         close
 
-  body_reader_ headers/Headers --request/bool --status_code/int?=null -> reader.Reader?:
-    content_length := headers.single "Content-Length"
+  body_reader_ headers/Headers --request/bool --status_code/int?=null content_length/int? -> io.Reader?:
+    reader := socket_.in
     if content_length:
-      length := int.parse content_length
-      if length == 0: return null  // No read is needed to drain this response.
-      return ContentLengthReader this reader_ length
+      if content_length == 0: return null  // No read is needed to drain this response.
+      return ContentLengthReader_ this reader content_length
 
     // The only transfer encodings we support are 'identity' and 'chunked',
     // which are both required by HTTP/1.1.
     T_E ::= "Transfer-Encoding"
     if headers.single T_E:
       if headers.matches T_E "chunked":
-        return ChunkedReader this reader_
+        return ChunkedReader_ this reader
       else if not headers.matches T_E "identity":
         throw "No support for $T_E: $(headers.single T_E)"
 
@@ -222,111 +248,137 @@ class Connection:
     // transfer succeeded.  Incidentally this also means the connection
     // can't be reused, but that should happen automatically because it
     // is closed.
-    return UnknownContentLengthReader this reader_
+    return UnknownContentLengthReader_ this reader
 
   // Optional whitespace is spaces and tabs.
   is_whitespace_ char:
     return char == ' ' or char == '\t'
 
   read_headers_:
+    reader := socket_.in
     headers := Headers
 
-    while (reader_.byte 0) != '\r':
-      if is_whitespace_ (reader_.byte 0):
+    while (reader.peek-byte 0) != '\r':
+      if is_whitespace_ (reader.peek-byte 0):
         // Line folded headers are deprecated in RFC 7230 and we don't support
         // them.
         throw "FOLDED_HEADER"
-      key := reader_.read_string (reader_.index_of ':')
-      reader_.skip 1
+      key := reader.read_string (reader.index_of ':')
+      reader.skip 1
 
-      while is_whitespace_ (reader_.byte 0): reader_.skip 1
+      while is_whitespace_ (reader.peek-byte 0): reader.skip 1
 
-      value := reader_.read_string (reader_.index_of '\r')
-      reader_.skip 1
-      if reader_.read_byte != '\n': throw "FORMAT_ERROR"
+      value := reader.read_string (reader.index_of '\r')
+      reader.skip 1
+      if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
       headers.add key value
 
-    reader_.skip 1
-    if reader_.read_byte != '\n': throw "FORMAT_ERROR"
+    reader.skip 1
+    if reader.read_byte != '\n': throw "FORMAT_ERROR"
 
     return headers
 
-  reading_done_ reader:
+  reading_done_ reader/io.Reader:
     if current_reader_:
       if reader != current_reader_: throw "Read from reader that was already done"
       current_reader_ = null
       if write_closed_: close
 
-  writing_done_ writer:
+  writing_done_ writer/io.Writer:
     if current_writer_:
       if writer != current_writer_: throw "Close of a writer that was already done"
       current_writer_ = null
 
-class ContentLengthReader implements reader.SizedReader:
+/**
+Deprecated for public use. Use the type $io.Reader instead.
+This class will be made private in the future.
+*/
+class ContentLengthReader extends ContentLengthReader_:
+  constructor connection/Connection reader/io.Reader size/int:
+    super connection reader size
+
+class ContentLengthReader_ extends io.Reader:
   connection_/Connection
-  reader_/reader.BufferedReader
-  remaining_length_/int := ?
-  content_length/int
+  reader_/io.Reader
 
-  constructor .connection_ .reader_ .content_length:
-    remaining_length_ = content_length
+  content-size/int
 
-  size -> int:
-    return content_length
+  constructor .connection_ .reader_ .content-size:
 
-  read -> ByteArray?:
-    if remaining_length_ <= 0:
+  /**
+  Deprecated. Use $content-size instead.
+  */
+  content_length -> int:
+    return content-size
+
+  read_ -> ByteArray?:
+    if processed >= content-size:
       connection_.reading_done_ this
       return null
-    data := reader_.read --max_size=remaining_length_
+    data := reader_.read --max_size=(content-size - processed)
     if not data:
       connection_.close
-      throw reader.UNEXPECTED_END_OF_READER_EXCEPTION
-    remaining_length_ -= data.size
+      throw io.Reader.UNEXPECTED_END_OF_READER
     return data
 
-class UnknownContentLengthReader implements reader.Reader:
+/**
+Deprecated for public use. Use the type $io.Reader instead.
+This class will be made private in the future.
+*/
+class UnknownContentLengthReader extends UnknownContentLengthReader_:
+  constructor connection/Connection reader/io.Reader:
+    super connection reader
+
+class UnknownContentLengthReader_ extends io.Reader:
   connection_/Connection
-  reader_/reader.BufferedReader
+  reader_/io.Reader
 
   constructor .connection_ .reader_:
 
-  read -> ByteArray?:
+  read_ -> ByteArray?:
     data := reader_.read
     if not data:
       connection_.close  // After an unknown content length the connection must close.
       return null
     return data
 
+/**
+Deprecated for public use. Use the type $io.CloseableWriter instead.
+*/
 interface BodyWriter:
   write data -> int
   is_done -> bool
   close -> none
 
-class ContentLengthWriter implements BodyWriter:
-  connection_/Connection? := null
-  writer_/writer.Writer
-  remaining_length_/int := ?
+/**
+Deprecated for public use. Use the type $io.CloseableWriter instead.
+This class will be made private in the future.
+*/
+class ContentLengthWriter extends ContentLengthWriter_:
+  constructor connection/Connection writer/io.Writer content_length/int:
+    super connection writer content_length
 
-  constructor .connection_ .writer_ .remaining_length_:
+class ContentLengthWriter_ extends io.CloseableWriter implements BodyWriter:
+  connection_/Connection? := null
+  writer_/io.Writer
+  content_length_/int := ?
+
+  constructor .connection_ .writer_ .content_length_:
 
   is_done -> bool:
-    return remaining_length_ == 0
+    return processed >= content_length_
 
-  write data -> int:
-    size := data.size
-    writer_.write data  // Always writes all data.
-    remaining_length_ -= size
-    return size
+  try_write_ data/io.Data from/int to/int -> int:
+    return writer_.try_write data from to
 
-  close -> none:
+  close_ -> none:
     if connection_:
       connection_.writing_done_ this
     connection_ = null
 
 is_close_exception_ exception -> bool:
-  return exception == reader.UNEXPECTED_END_OF_READER_EXCEPTION
+  return exception == io.Reader.UNEXPECTED_END_OF_READER
       or exception == "Broken pipe"
       or exception == "Connection reset by peer"
       or exception == "NOT_CONNECTED"

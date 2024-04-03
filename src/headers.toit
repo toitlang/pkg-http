@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
-import bytes
+import io
 
 class Headers:
   headers_/Map? := null
@@ -137,7 +137,7 @@ class Headers:
         values.do block
 
   stringify -> string:
-    buffer := bytes.Buffer
+    buffer := io.Buffer
     write_to buffer
     return buffer.to_string
 
