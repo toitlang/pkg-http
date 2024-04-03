@@ -2,11 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the LICENSE file.
 
-import binary show BIG_ENDIAN
 import bitmap show blit XOR
 import crypto.sha1 show sha1
 import encoding.base64
 import io
+import io show BIG_ENDIAN
 import monitor show Semaphore
 import net.tcp
 
@@ -451,7 +451,7 @@ class WebSocketReader extends io.Reader:
   Note that even if the message is transmitted as text, it arrives as
     ByteArrays.
   */
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     result := fragment_reader_.read
     if result == null:
       if fragment_reader_.is_fin:

@@ -31,7 +31,7 @@ class NonSizedTestReader extends io.Reader:
   call_count_ := 0
   chunks_ := List 5: "$it" * it
 
-  consume_ -> ByteArray?:
+  read_ -> ByteArray?:
     if call_count_ == chunks_.size:
       return null
     call_count_++
