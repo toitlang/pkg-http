@@ -19,16 +19,16 @@ main:
     if request.path == "/empty":
     else if request.path == "/json":
       writer.headers.set "Content-Type" "application/json"
-      writer.write
+      writer.out.write
         json.encode ITEMS
     else if request.path == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
       writer.headers.set "Content-Type" "text/plain"
-      writer.write "hello\n"
+      writer.out.write "hello\n"
     else if request.path == "/500":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
-      writer.write "hello\n"
+      writer.out.write "hello\n"
     else if request.path == "/599":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 599 --message="Dazed and confused"
