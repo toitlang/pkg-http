@@ -19,7 +19,7 @@ main:
     if resource == "/empty":
     else if resource == "/":
       writer.headers.set "Content-Type" "text/html"
-      writer.write """
+      writer.out.write """
         <html>
           <head>
             <title>Test</title>
@@ -32,7 +32,7 @@ main:
         """
     else if resource == "/json":
       writer.headers.set "Content-Type" "application/json"
-      writer.write
+      writer.out.write
         json.encode ITEMS
     else if resource == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
@@ -40,12 +40,12 @@ main:
     else if resource == "/500":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 500
-      writer.write "Failure\n"
+      writer.out.write "Failure\n"
     else if resource == "/599":
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 599 --message="Dazed and confused"
     else:
       writer.headers.set "Content-Type" "text/plain"
       writer.write_headers 404
-      writer.write "Not found\n"
+      writer.out.write "Not found\n"
     writer.close
