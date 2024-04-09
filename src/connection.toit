@@ -301,6 +301,7 @@ class ContentLengthReader extends ContentLengthReader_:
 class ContentLengthReader_ extends io.Reader:
   connection_/Connection
   reader_/io.Reader
+  read-from-wrapped_/int := 0
 
   content-size/int
 
@@ -313,13 +314,14 @@ class ContentLengthReader_ extends io.Reader:
     return content-size
 
   read_ -> ByteArray?:
-    if processed >= content-size:
+    if read-from-wrapped_ >= content-size:
       connection_.reading_done_ this
       return null
     data := reader_.read --max_size=(content-size - processed)
     if not data:
       connection_.close
       throw io.Reader.UNEXPECTED_END_OF_READER
+    read-from-wrapped_ += data.size
     return data
 
 /**
@@ -363,14 +365,17 @@ class ContentLengthWriter_ extends io.CloseableWriter implements BodyWriter:
   connection_/Connection? := null
   writer_/io.Writer
   content_length_/int := ?
+  written-to-wrapped_/int := 0
 
   constructor .connection_ .writer_ .content_length_:
 
   is_done -> bool:
-    return processed >= content_length_
+    return written-to-wrapped_ >= content_length_
 
   try_write_ data/io.Data from/int to/int -> int:
-    return writer_.try_write data from to
+    result := writer_.try_write data from to
+    written-to-wrapped_ += result
+    return result
 
   close_ -> none:
     if connection_:

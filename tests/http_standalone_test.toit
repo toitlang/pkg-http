@@ -83,7 +83,32 @@ run_client network port/int -> none:
     expect_json response:
       expect_equals 123 it["foo"]
 
-  response := client.get --uri="http://localhost:$port/redirect_back"
+  // Try to buffer the whole response.
+  response := client.get --host="localhost" --port=port --path="/foo.json"
+  expect_equals 200 response.status_code
+  response.body.buffer-all
+  bytes := response.body.read-all
+  decoded := json.decode bytes
+  expect_equals 123 decoded["foo"]
+
+  response = client.get --uri="http://localhost:$port/content-length.json"
+  expect_equals 200 response.status_code
+  expect_equals "application/json"
+      response.headers.single "Content-Type"
+  content-length := response.headers.single "Content-Length"
+  expect_not_null content-length
+  expect_json response:
+    expect_equals 123 it["foo"]
+
+  // Try to buffer the whole response.
+  response = client.get --uri="http://localhost:$port/content-length.json"
+  expect_equals 200 response.status_code
+  response.body.buffer-all
+  bytes = response.body.read-all
+  decoded = json.decode bytes
+  expect_equals 123 decoded["foo"]
+
+  response = client.get --uri="http://localhost:$port/redirect_back"
   expect connection != client.connection_  // Because of the redirect we had to make a new connection.
   expect_equals "application/json"
       response.headers.single "Content-Type"
@@ -256,6 +281,11 @@ listen server server_socket my_port other_port:
       response_writer.headers.set "Content-Type" "application/json"
       writer.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
+    else if resource == "/content-length.json":
+      data := json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
+      response_writer.headers.set "Content-Type" "application/json"
+      response_writer.headers.set "Content-Length" "$data.size"
+      writer.write data
     else if resource == "/cat.png":
       response_writer.headers.set "Content-Type" "image/png"
       writer.write CAT
