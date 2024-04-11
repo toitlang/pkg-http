@@ -1,4 +1,4 @@
 name: http
 description: An HTTP server and client.
 environment:
-  sdk: ^2.0.0-alpha.144
+  sdk: ^2.0.0-alpha.145

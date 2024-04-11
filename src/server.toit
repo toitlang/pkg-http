@@ -262,7 +262,7 @@ class ResponseWriter extends Object with io.OutMixin:
     user's router did not call it.
   */
   close -> none:
-    close_writer_
+    mark_writer-closed_
     if body_writer_:
       too_little := content_length_ ? (body_writer_.processed < content_length_) : false
       body_writer_.close
