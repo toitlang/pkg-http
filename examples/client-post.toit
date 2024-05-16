@@ -14,7 +14,7 @@ main:
   certificate-roots.install-common-trusted-roots
   network := net.open
   client := http.Client.tls network
-  response := client.post_json --host=HOST --path=PATH {
+  response := client.post-json --host=HOST --path=PATH {
     "foo": 42,
     "bar": 499,
   }
