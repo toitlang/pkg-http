@@ -2,17 +2,19 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the EXAMPLES_LICENSE file.
 
+import certificate-roots
+import encoding.json
 import http
 import net
-import encoding.json
 
-URL ::= "httpbin.org"
+HOST ::= "httpbin.org"
 PATH ::= "/post"
 
 main:
+  certificate-roots.install-common-trusted-roots
   network := net.open
-  client := http.Client network
-  response := client.post_json --host=URL --path=PATH {
+  client := http.Client.tls network
+  response := client.post_json --host=HOST --path=PATH {
     "foo": 42,
     "bar": 499,
   }

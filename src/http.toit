@@ -31,28 +31,27 @@ main:
   network := net.open
   client := http.Client network
   response := client.get URL PATH
-  data := json.decode_stream response.body
+  data := json.decode-stream response.body
   client.close
 ```
 
-For https connection the client needs the certificate of the server:
+For https connection the client needs to install certificate roots:
 ```
 import http
 import net
 import encoding.json
-import certificate_roots  // Package github.com/toitware/toit-cert-roots.
+import certificate-roots  // Package github.com/toitware/toit-cert-roots.
 
-URL ::= "httpbin.org"
+HOST ::= "httpbin.org"
 PATH ::= "/get"
-// This certificate depends on the URL.
-CERTIFICATE ::= certificate_roots.AMAZON_ROOT_CA_1
 
 main:
+  certificate-roots.install-common-trusted-roots
   network := net.open
   client := http.Client.tls network
-      --root_certificates=[CERTIFICATE]
-  response := client.get URL PATH
-  data := json.decode_stream response.body
+  response := client.get HOST PATH
+  data := json.decode-stream response.body
+  print data
   client.close
 ```
 
@@ -63,18 +62,18 @@ import http
 import net
 import encoding.json
 
-URL ::= "httpbin.org"
+HOST ::= "httpbin.org"
 PATH ::= "/post"
 
 main:
   network := net.open
   client := http.Client network
-  response := client.post_json --host=URL --path=PATH {
+  response := client.post-json --host=HOST --path=PATH {
     "foo": 42,
     "bar": 499,
   }
-  data := json.decode_stream response.body
-  client.close
+  data := json.decode-stream response.body
   print data
+  client.close
 ```
 */
