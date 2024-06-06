@@ -78,7 +78,7 @@ class Server:
     server.listen tcp_socket:: | request/http.Request writer/http.ResponseWriter |
       if request.path == "/":
         writer.headers.set "Content-Type" "text/html"
-        writer.write "<html><body>hello world</body></html>
+        writer.out.write "<html><body>hello world</body></html>"
       writer.close
   ```
   */
