@@ -13,8 +13,7 @@ ITEMS := ["FOO", "BAR", "BAZ"]
 
 main:
   network := net.open
-  server := http.Server.tls
-    --certificate=TLS-SERVER-CERT
+  server := http.Server.tls --certificate=TLS-SERVER-CERT
   server.listen network 8080:: | request/http.RequestIncoming writer/http.ResponseWriter |
     if request.path == "/empty":
     else if request.path == "/json":

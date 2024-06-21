@@ -17,6 +17,39 @@ import .request
 import .status-codes
 import .web-socket
 
+/**
+An HTTP server.
+
+# Examples
+```
+import http
+import net
+
+main:
+  network := net.open
+  // Listen on a free port.
+  tcp-socket := network.tcp-listen 0
+  print "Server on http://localhost:$tcp-socket.local-address.port/"
+  server := http.Server
+  server.listen tcp-socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
+    resource := request.query.resource
+    if resource == "/empty":
+    else if resource == "/":
+      writer.headers.set "Content-Type" "text/html"
+      writer.out.write """
+        <html>
+          <body>
+            <p>Hello world</p>
+          </body>
+        </html>
+        """
+    else:
+      writer.headers.set "Content-Type" "text/plain"
+      writer.write-headers 404
+      writer.out.write "Not found\n"
+    writer.close
+```
+*/
 class Server:
   static DEFAULT-READ-TIMEOUT/Duration ::= Duration --s=30
 

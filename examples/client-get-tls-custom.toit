@@ -4,12 +4,15 @@
 
 import http
 import net
-import net.x509
+import tls
 
 main:
   network := net.open
+
+  certificate := tls.RootCertificate SERVER-CERT
+  certificate.install
+
   client := http.Client.tls network
-    --root-certificates=[SERVER-CERT]
 
   response := client.get "localhost:8080" "/json"
   while data := response.body.read:
@@ -17,7 +20,7 @@ main:
 
   client.close
 
-SERVER-CERT ::= x509.Certificate.parse """
+SERVER-CERT ::= """
 -----BEGIN CERTIFICATE-----
 MIIDkzCCAnugAwIBAgIUb3nSgGzXBdgsDhg8shods8EHszAwDQYJKoZIhvcNAQEL
 BQAwWTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
