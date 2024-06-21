@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/TESTS_LICENSE file.
 
-import certificate_roots show *
+import certificate-roots show *
 import expect show *
 import http
 import net
@@ -15,8 +15,8 @@ main:
   network := net.open
   client := http.Client.tls network
 
-  client.root_certificates_.add GTS_ROOT_R1
+  client.root-certificates_.add GTS-ROOT-R1
 
   response := client.get --host=HOST --path=PATH
 
-  expect_equals CODE response.status_code
+  expect-equals CODE response.status-code

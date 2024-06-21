@@ -8,8 +8,8 @@ import .request
 import .response
 import .headers
 import .method
-import .status_codes
-import .web_socket
+import .status-codes
+import .web-socket
 
 export *
 

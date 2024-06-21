@@ -15,21 +15,21 @@ import .cat
 
 main:
   network := net.open
-  port := start_server network
-  run_client network port
-  expect_not try_finally_didnt_work
+  port := start-server network
+  run-client network port
+  expect-not try-finally-didnt-work
 
-try_finally_didnt_work := false
+try-finally-didnt-work := false
 
-SERVER_CALL_IN_FINALIZER ::= ::
-  try_finally_didnt_work = true
+SERVER-CALL-IN-FINALIZER ::= ::
+  try-finally-didnt-work = true
   throw "Server finalizer was called"
 
-CLIENT_CALL_IN_FINALIZER ::= ::
-  try_finally_didnt_work = true
+CLIENT-CALL-IN-FINALIZER ::= ::
+  try-finally-didnt-work = true
   throw "Client finalizer was called"
 
-run_client network port/int -> none:
+run-client network port/int -> none:
   client := null
 
   10.repeat:
@@ -37,7 +37,7 @@ run_client network port/int -> none:
     try:
       client = http.Client network
       response := client.get --host="localhost" --port=port --path="/cat.png"
-      client.connection_.call_in_finalizer_ = CLIENT_CALL_IN_FINALIZER
+      client.connection_.call-in-finalizer_ = CLIENT-CALL-IN-FINALIZER
     finally:
       client.close
 
@@ -46,18 +46,18 @@ run_client network port/int -> none:
     try:
       client = http.Client network
       response := client.get --host="localhost" --port=port --path="/cat.png"
-      client.connection_.call_in_finalizer_ = CLIENT_CALL_IN_FINALIZER
+      client.connection_.call-in-finalizer_ = CLIENT-CALL-IN-FINALIZER
       throw MESSAGE
     finally:
       client.close
-  expect_equals MESSAGE exception
+  expect-equals MESSAGE exception
 
   10.repeat:
     // Hit the finally clause after making a GET request and reading a bit.
     try:
       client = http.Client network
       response := client.get --host="localhost" --port=port --path="/cat.png"
-      client.connection_.call_in_finalizer_ = CLIENT_CALL_IN_FINALIZER
+      client.connection_.call-in-finalizer_ = CLIENT-CALL-IN-FINALIZER
       data := response.body.read
       expect data != null
     finally:
@@ -68,44 +68,44 @@ run_client network port/int -> none:
     try:
       client = http.Client network
       response := client.get --host="localhost" --port=port --path="/cause_500"
-      client.connection_.call_in_finalizer_ = CLIENT_CALL_IN_FINALIZER
+      client.connection_.call-in-finalizer_ = CLIENT-CALL-IN-FINALIZER
     finally:
       client.close
 
-start_server network -> int:
-  server_socket := network.tcp_listen 0
-  port := server_socket.local_address.port
+start-server network -> int:
+  server-socket := network.tcp-listen 0
+  port := server-socket.local-address.port
   server := http.Server
   task --background::
-    listen server server_socket port
+    listen server server-socket port
   print ""
   print "Listening on http://localhost:$port/"
   print ""
   return port
 
-listen server server_socket my_port:
-  server.call_in_finalizer_ = SERVER_CALL_IN_FINALIZER
-  server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
+listen server server-socket my-port:
+  server.call-in-finalizer_ = SERVER-CALL-IN-FINALIZER
+  server.listen server-socket:: | request/http.RequestIncoming response-writer/http.ResponseWriter |
     out := response-writer.out
     if request.path == "/":
-      response_writer.headers.set "Content-Type" "text/html"
-      out.write INDEX_HTML
+      response-writer.headers.set "Content-Type" "text/html"
+      out.write INDEX-HTML
     else if request.path == "/foo.json":
-      response_writer.headers.set "Content-Type" "application/json"
+      response-writer.headers.set "Content-Type" "application/json"
       out.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
     else if request.path == "/cat.png":
-      response_writer.headers.set "Content-Type" "image/png"
+      response-writer.headers.set "Content-Type" "image/png"
       out.write CAT
     else if request.path == "/redirect_from":
-      response_writer.redirect http.STATUS_FOUND "http://localhost:$my_port/redirect_back"
+      response-writer.redirect http.STATUS-FOUND "http://localhost:$my-port/redirect_back"
     else if request.path == "/redirect_back":
-      response_writer.redirect http.STATUS_FOUND "http://localhost:$my_port/foo.json"
+      response-writer.redirect http.STATUS-FOUND "http://localhost:$my-port/foo.json"
     else if request.path == "/redirect_loop":
-      response_writer.redirect http.STATUS_FOUND "http://localhost:$my_port/redirect_loop"
+      response-writer.redirect http.STATUS-FOUND "http://localhost:$my-port/redirect_loop"
     else if request.path == "/cause_500":
       // Forget to write anything - the server should send 500 - Internal error.
     else if request.path == "/throw":
       throw "** Expect a stack trace here caused by testing\n** that we send 500 when server throws"
     else:
-      response-writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
+      response-writer.write-headers http.STATUS-NOT-FOUND --message="Not Found"

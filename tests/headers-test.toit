@@ -7,8 +7,8 @@ import http
 import io
 
 main:
-  test_from_map
-  test_keys
+  test-from-map
+  test-keys
 
 /**
 Converts the given $headers to a string.
@@ -18,28 +18,28 @@ The $http.Headers class has a stringify method that does pretty much
 */
 stringify headers/http.Headers -> string:
   buffer := io.Buffer
-  headers.write_to buffer
-  return buffer.bytes.to_string_non_throwing
+  headers.write-to buffer
+  return buffer.bytes.to-string-non-throwing
 
-test_from_map:
-  headers := http.Headers.from_map {:}
-  expect_equals "" (stringify headers)
+test-from-map:
+  headers := http.Headers.from-map {:}
+  expect-equals "" (stringify headers)
 
-  headers = http.Headers.from_map {"foo": "bar"}
-  expect_equals "Foo: bar\r\n" (stringify headers)
+  headers = http.Headers.from-map {"foo": "bar"}
+  expect-equals "Foo: bar\r\n" (stringify headers)
 
-  headers = http.Headers.from_map {"foo": ["bar", "baz"]}
-  expect_equals "Foo: bar\r\nFoo: baz\r\n" (stringify headers)
+  headers = http.Headers.from-map {"foo": ["bar", "baz"]}
+  expect-equals "Foo: bar\r\nFoo: baz\r\n" (stringify headers)
 
-  headers = http.Headers.from_map {"foo": ["bar", "baz"], "qux": "quux"}
-  expect_equals "Foo: bar\r\nFoo: baz\r\nQux: quux\r\n" (stringify headers)
+  headers = http.Headers.from-map {"foo": ["bar", "baz"], "qux": "quux"}
+  expect-equals "Foo: bar\r\nFoo: baz\r\nQux: quux\r\n" (stringify headers)
 
-  headers = http.Headers.from_map {"foo": ["bar", "baz"], "Foo": "corge"}
-  expect_equals "Foo: bar\r\nFoo: baz\r\nFoo: corge\r\n" (stringify headers)
+  headers = http.Headers.from-map {"foo": ["bar", "baz"], "Foo": "corge"}
+  expect-equals "Foo: bar\r\nFoo: baz\r\nFoo: corge\r\n" (stringify headers)
 
-test_keys:
-  headers := http.Headers.from_map {"foo": ["bar", "baz"], "qux": "quux"}
-  expect_list_equals ["Foo", "Qux"] headers.keys
+test-keys:
+  headers := http.Headers.from-map {"foo": ["bar", "baz"], "qux": "quux"}
+  expect-list-equals ["Foo", "Qux"] headers.keys
 
   headers = http.Headers
-  expect_list_equals [] headers.keys
+  expect-list-equals [] headers.keys

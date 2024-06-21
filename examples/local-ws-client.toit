@@ -14,24 +14,24 @@ main:
   network := net.open
   client := http.Client network
 
-  websocket := client.web_socket --host="localhost" --port=8000
+  websocket := client.web-socket --host="localhost" --port=8000
 
   task --background::
     print "Message received: '$websocket.receive'"
-    while reader := websocket.start_receiving:
+    while reader := websocket.start-receiving:
       size := 0
       data := #[]
       while chunk := reader.read:
         data += chunk
-      if reader.is_text:
-        print "Message received: '$data.to_string'"
+      if reader.is-text:
+        print "Message received: '$data.to-string'"
       else:
         print "Message received: size $data.size."
 
   websocket.send "Hello, World!"
   websocket.send "Hello, World!"
   websocket.send "Hello, World!"
-  writer := websocket.start_sending
+  writer := websocket.start-sending
   writer.write "Hello, World!"
   writer.write "Now is the time for all good men"
   writer.write "to come to the aid of the party."
