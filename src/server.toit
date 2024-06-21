@@ -43,6 +43,9 @@ main:
           </body>
         </html>
         """
+    else if resource == "/json" and request.method == http.POST:
+      decoded := json.decode-stream request.body
+      print "Received JSON: $decoded"
     else:
       writer.headers.set "Content-Type" "text/plain"
       writer.write-headers 404
