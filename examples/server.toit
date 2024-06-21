@@ -11,10 +11,10 @@ ITEMS := ["FOO", "BAR", "BAZ"]
 main:
   network := net.open
   // Listen on a free port.
-  tcp_socket := network.tcp_listen 0
-  print "Server on http://localhost:$tcp_socket.local_address.port/"
+  tcp-socket := network.tcp-listen 0
+  print "Server on http://localhost:$tcp-socket.local-address.port/"
   server := http.Server
-  server.listen tcp_socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
+  server.listen tcp-socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
     resource := request.query.resource
     if resource == "/empty":
     else if resource == "/":
@@ -36,16 +36,16 @@ main:
         json.encode ITEMS
     else if resource == "/headers":
       writer.headers.set "Http-Test-Header" "going strong"
-      writer.write_headers 200
+      writer.write-headers 200
     else if resource == "/500":
       writer.headers.set "Content-Type" "text/plain"
-      writer.write_headers 500
+      writer.write-headers 500
       writer.out.write "Failure\n"
     else if resource == "/599":
       writer.headers.set "Content-Type" "text/plain"
-      writer.write_headers 599 --message="Dazed and confused"
+      writer.write-headers 599 --message="Dazed and confused"
     else:
       writer.headers.set "Content-Type" "text/plain"
-      writer.write_headers 404
+      writer.write-headers 404
       writer.out.write "Not found\n"
     writer.close

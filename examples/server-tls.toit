@@ -14,7 +14,7 @@ ITEMS := ["FOO", "BAR", "BAZ"]
 main:
   network := net.open
   server := http.Server.tls
-    --certificate=TLS_SERVER_CERT
+    --certificate=TLS-SERVER-CERT
   server.listen network 8080:: | request/http.RequestIncoming writer/http.ResponseWriter |
     if request.path == "/empty":
     else if request.path == "/json":
@@ -27,17 +27,17 @@ main:
       writer.out.write "hello\n"
     else if request.path == "/500":
       writer.headers.set "Content-Type" "text/plain"
-      writer.write_headers 500
+      writer.write-headers 500
       writer.out.write "hello\n"
     else if request.path == "/599":
       writer.headers.set "Content-Type" "text/plain"
-      writer.write_headers 599 --message="Dazed and confused"
+      writer.write-headers 599 --message="Dazed and confused"
     writer.close
 
 // Self-signed certificate with "localhost" Common-Name.
-TLS_SERVER_CERT ::= tls.Certificate SERVER_CERT SERVER_KEY
+TLS-SERVER-CERT ::= tls.Certificate SERVER-CERT SERVER-KEY
 
-SERVER_CERT ::= x509.Certificate.parse """
+SERVER-CERT ::= x509.Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDkzCCAnugAwIBAgIUb3nSgGzXBdgsDhg8shods8EHszAwDQYJKoZIhvcNAQEL
 BQAwWTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
@@ -62,7 +62,7 @@ eLYDrha/bg==
 -----END CERTIFICATE-----
 """
 
-SERVER_KEY ::= """
+SERVER-KEY ::= """
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC0uBjd9ybX8chE
 +cAfuuxZ/Ifhtay1M/UtcgzVnfW+/dxg3KDO3aY2OiHYkB5LrhS3jTcyzhOzS07R

@@ -18,6 +18,6 @@ main:
     "foo": 42,
     "bar": 499,
   }
-  data := json.decode_stream response.body
+  data := json.decode-stream response.body
   client.close
   print data

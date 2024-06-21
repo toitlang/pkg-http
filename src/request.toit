@@ -20,7 +20,7 @@ abstract class Request:
   abstract body -> io.Reader?
   body= value/io.Reader: throw "NOT_IMPLEMENTED"
   send -> Response: throw "NOT_IMPLEMENTED"
-  content_length -> int?: throw "NOT_IMPLEMENTED"
+  content-length -> int?: throw "NOT_IMPLEMENTED"
   abstract drain -> none
 
 /// Outgoing request to an HTTP server, we are acting like a client.
@@ -44,20 +44,20 @@ class RequestOutgoing extends Request:
   constructor.private_ .connection_ .method .path .headers:
 
   send -> Response:
-    has_body := body != null
-    content_length := has_body ? body.content-size : null
-    slash := (path.starts_with "/") ? "" : "/"
-    body_writer := connection_.send_headers
+    has-body := body != null
+    content-length := has-body ? body.content-size : null
+    slash := (path.starts-with "/") ? "" : "/"
+    body-writer := connection_.send-headers
         "$method $slash$path HTTP/1.1\r\n"
         headers
-        --is_client_request=true
-        --content_length=content_length
-        --has_body=has_body
+        --is-client-request=true
+        --content-length=content-length
+        --has-body=has-body
     if body:
       while data := body.read:
-        body_writer.write data
-    body_writer.close
-    return connection_.read_response
+        body-writer.write data
+    body-writer.close
+    return connection_.read-response
 
   drain: body.drain
 
@@ -91,7 +91,7 @@ class RequestIncoming extends Request:
   /**
   The length of the body, if known.
   */
-  content_length -> int?:
+  content-length -> int?:
     return body.content-size
 
   drain:

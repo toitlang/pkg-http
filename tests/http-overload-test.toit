@@ -13,56 +13,56 @@ import .cat
 
 main:
   network := net.open
-  port := start_server network
-  run_client network port
+  port := start-server network
+  run-client network port
 
-run_client network port/int -> none:
-  20.repeat: | client_number |
-    print client_number
+run-client network port/int -> none:
+  20.repeat: | client-number |
+    print client-number
     client := http.Client network
     response := client.get --host="localhost" --port=port --path="/"
     connection := client.connection_
 
     page := ""
     while data := response.body.read:
-      page += data.to_string
-    expect_equals INDEX_HTML.size page.size
+      page += data.to-string
+    expect-equals INDEX-HTML.size page.size
 
     task::
       10.repeat:
         sleep --ms=50
-        print "  $client_number Getting cat"
-        cat_response := client.get --host="localhost" --port=port --path="/cat.png"
-        expect_equals connection client.connection_  // Check we reused the connection.
-        expect_equals "image/png"
-            cat_response.headers.single "Content-Type"
+        print "  $client-number Getting cat"
+        cat-response := client.get --host="localhost" --port=port --path="/cat.png"
+        expect-equals connection client.connection_  // Check we reused the connection.
+        expect-equals "image/png"
+            cat-response.headers.single "Content-Type"
         size := 0
-        while data := cat_response.body.read:
+        while data := cat-response.body.read:
           size += data.size
       client.close
 
-start_server network -> int:
-  server_socket1 := network.tcp_listen 0
-  port1 := server_socket1.local_address.port
-  server1 := http.Server --max_tasks=5
+start-server network -> int:
+  server-socket1 := network.tcp-listen 0
+  port1 := server-socket1.local-address.port
+  server1 := http.Server --max-tasks=5
   print ""
   print "Listening on http://localhost:$port1/"
   print ""
-  task --background:: listen server1 server_socket1 port1
+  task --background:: listen server1 server-socket1 port1
   return port1
 
-listen server server_socket my_port:
-  server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
+listen server server-socket my-port:
+  server.listen server-socket:: | request/http.RequestIncoming response-writer/http.ResponseWriter |
     out := response-writer.out
     if request.path == "/":
-      response_writer.headers.set "Content-Type" "text/html"
-      out.write INDEX_HTML
+      response-writer.headers.set "Content-Type" "text/html"
+      out.write INDEX-HTML
     else if request.path == "/foo.json":
-      response_writer.headers.set "Content-Type" "application/json"
+      response-writer.headers.set "Content-Type" "application/json"
       out.write
         json.encode {"foo": 123, "bar": 1.0/3, "fizz": [1, 42, 103]}
     else if request.path == "/cat.png":
-      response_writer.headers.set "Content-Type" "image/png"
+      response-writer.headers.set "Content-Type" "image/png"
       out.write CAT
     else:
-      response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
+      response-writer.write-headers http.STATUS-NOT-FOUND --message="Not Found"

@@ -14,49 +14,49 @@ import .chunked
 import .connection
 import .headers
 import .request
-import .status_codes
-import .web_socket
+import .status-codes
+import .web-socket
 
 class Server:
-  static DEFAULT_READ_TIMEOUT/Duration ::= Duration --s=30
+  static DEFAULT-READ-TIMEOUT/Duration ::= Duration --s=30
 
-  read_timeout/Duration
+  read-timeout/Duration
 
   logger_/log.Logger
-  use_tls_/bool ::= false
+  use-tls_/bool ::= false
   certificate_/tls.Certificate? ::= null
-  root_certificates_/List ::= []
+  root-certificates_/List ::= []
   semaphore_/monitor.Semaphore? ::= null
 
   // For testing.
-  call_in_finalizer_/Lambda? := null
+  call-in-finalizer_/Lambda? := null
 
-  constructor --.read_timeout=DEFAULT_READ_TIMEOUT --max_tasks/int=1 --logger=log.default:
+  constructor --.read-timeout=DEFAULT-READ-TIMEOUT --max-tasks/int=1 --logger=log.default:
     logger_ = logger
-    if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
+    if max-tasks > 1: semaphore_ = monitor.Semaphore --count=max-tasks
 
   constructor.tls
-      --.read_timeout=DEFAULT_READ_TIMEOUT
-      --max_tasks/int=1
+      --.read-timeout=DEFAULT-READ-TIMEOUT
+      --max-tasks/int=1
       --logger=log.default
       --certificate/tls.Certificate
-      --root_certificates/List=[]:
+      --root-certificates/List=[]:
     logger_ = logger
-    use_tls_ = true
+    use-tls_ = true
     certificate_ = certificate
-    root_certificates_ = root_certificates
-    if max_tasks > 1: semaphore_ = monitor.Semaphore --count=max_tasks
+    root-certificates_ = root-certificates
+    if max-tasks > 1: semaphore_ = monitor.Semaphore --count=max-tasks
 
   /**
   Sets up an HTTP server on the given $network and port.
-  Use $(listen server_socket handler) if you want to let the system
+  Use $(listen server-socket handler) if you want to let the system
     pick a free port.
   The handler is called for each incoming request with two arguments:
     The $Request and a $ResponseWriter.
   */
   listen network/tcp.Interface port/int handler/Lambda -> none:
-    server_socket := network.tcp_listen port
-    listen server_socket handler
+    server-socket := network.tcp-listen port
+    listen server-socket handler
 
   /**
   Sets up an HTTP server on the given TCP server socket.
@@ -82,91 +82,91 @@ class Server:
       writer.close
   ```
   */
-  listen server_socket/tcp.ServerSocket handler/Lambda -> none:
+  listen server-socket/tcp.ServerSocket handler/Lambda -> none:
     while true:
-      parent_task_semaphore := null
+      parent-task-semaphore := null
       if semaphore_:
-        parent_task_semaphore = semaphore_
+        parent-task-semaphore = semaphore_
         // Down the semaphore before the accept, so we just don't accept
         // connections if we are at the limit.
         semaphore_.down
       try:  // A try to ensure the semaphore is upped.
-        accepted := server_socket.accept
+        accepted := server-socket.accept
         if not accepted: continue
 
         socket := accepted
-        if use_tls_:
+        if use-tls_:
           socket = tls.Socket.server socket
             --certificate=certificate_
-            --root_certificates=root_certificates_
+            --root-certificates=root-certificates_
 
         connection := Connection --location=null socket
-        address := socket.peer_address
-        logger := logger_.with_tag "peer" address
+        address := socket.peer-address
+        logger := logger_.with-tag "peer" address
         logger.debug "client connected"
 
         // This code can be run in the current task or in a child task.
-        handle_connection_closure := ::
+        handle-connection-closure := ::
           try:  // A try to ensure the semaphore is upped in the child task.
             detached := false
-            e := catch --trace=(: not is_close_exception_ it and it != DEADLINE_EXCEEDED_ERROR):
-              detached = run_connection_ connection handler logger
-            connection.close_write_
-            close_logger := e ? logger.with_tag "reason" e : logger
+            e := catch --trace=(: not is-close-exception_ it and it != DEADLINE-EXCEEDED-ERROR):
+              detached = run-connection_ connection handler logger
+            connection.close-write_
+            close-logger := e ? logger.with-tag "reason" e : logger
             if detached:
-              close_logger.debug "client socket detached"
+              close-logger.debug "client socket detached"
             else:
-              close_logger.debug "connection ended"
+              close-logger.debug "connection ended"
           finally:
             if semaphore_: semaphore_.up  // Up the semaphore when the task ends.
         // End of code that can be run in the current task or in a child task.
 
-        parent_task_semaphore = null  // We got this far, the semaphore is ours.
+        parent-task-semaphore = null  // We got this far, the semaphore is ours.
         if semaphore_:
-          task --background handle_connection_closure
+          task --background handle-connection-closure
         else:
           // For the single-task case, just run the connection in the current task.
-          handle_connection_closure.call
+          handle-connection-closure.call
       finally:
         // Up the semaphore if we threw before starting the task.
-        if parent_task_semaphore: parent_task_semaphore.up
+        if parent-task-semaphore: parent-task-semaphore.up
 
-  web_socket request/RequestIncoming response_writer/ResponseWriter -> WebSocket?:
-    nonce := WebSocket.check_server_upgrade_request_ request response_writer
+  web-socket request/RequestIncoming response-writer/ResponseWriter -> WebSocket?:
+    nonce := WebSocket.check-server-upgrade-request_ request response-writer
     if nonce == null: return null
-    response_writer.write_headers STATUS_SWITCHING_PROTOCOLS
-    return WebSocket response_writer.detach --no-client
+    response-writer.write-headers STATUS-SWITCHING-PROTOCOLS
+    return WebSocket response-writer.detach --no-client
 
   // Returns true if the connection was detached, false if it was closed.
-  run_connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
-    if call_in_finalizer_: connection.call_in_finalizer_ = call_in_finalizer_
+  run-connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
+    if call-in-finalizer_: connection.call-in-finalizer_ = call-in-finalizer_
     while true:
       request/RequestIncoming? := null
-      with_timeout read_timeout:
-        request = connection.read_request
+      with-timeout read-timeout:
+        request = connection.read-request
       if not request: return false  // Client closed connection.
-      request_logger := logger
+      request-logger := logger
       if request.method != "GET":
-        request_logger = request_logger.with_tag "method" request.method
-      request_logger = request_logger.with_tag "path" request.path
-      request_logger.debug "incoming request"
-      writer ::= ResponseWriter connection request request_logger
-      unwind_block := : | exception |
+        request-logger = request-logger.with-tag "method" request.method
+      request-logger = request-logger.with-tag "path" request.path
+      request-logger.debug "incoming request"
+      writer ::= ResponseWriter connection request request-logger
+      unwind-block := : | exception |
         // If there's an error we can either send a 500 error message or close
         // the connection.  This depends on whether we had already sent the
         // headers - can't send a 500 if we already sent a success header.
-        closed := writer.close_on_exception_ "Internal Server error - $exception"
+        closed := writer.close-on-exception_ "Internal Server error - $exception"
         closed   // Unwind if the connection is dead.
       if request.method == "HEAD":
-        writer.write_headers STATUS_METHOD_NOT_ALLOWED --message="HEAD not implemented"
+        writer.write-headers STATUS-METHOD-NOT-ALLOWED --message="HEAD not implemented"
       else:
-        catch --trace --unwind=unwind_block:
+        catch --trace --unwind=unwind-block:
           handler.call request writer  // Calls the block passed to listen.
       if writer.detached_: return true
       if request.body.read:
         // The request (eg. a POST request) was not fully read - should have
         // been closed and return null from read.
-        closed := writer.close_on_exception_ "Internal Server error - request not fully read"
+        closed := writer.close-on-exception_ "Internal Server error - request not fully read"
         assert: closed
         throw "request not fully read: $request.path"
       writer.close
@@ -178,25 +178,25 @@ class ResponseWriter extends Object with io.OutMixin:
   request_/RequestIncoming
   logger_/log.Logger
   headers_/Headers
-  body_writer_/io.CloseableWriter? := null
-  content_length_/int? := null
+  body-writer_/io.CloseableWriter? := null
+  content-length_/int? := null
   detached_/bool := false
 
   constructor .connection_ .request_ .logger_:
     headers_ = Headers
 
   headers -> Headers:
-    if body_writer_: throw "headers already written"
+    if body-writer_: throw "headers already written"
     return headers_
 
-  write_headers status_code/int --message/string?=null:
-    if body_writer_: throw "headers already written"
-    has_body := status_code != STATUS_NO_CONTENT
-    write_headers_
-        status_code
+  write-headers status-code/int --message/string?=null:
+    if body-writer_: throw "headers already written"
+    has-body := status-code != STATUS-NO-CONTENT
+    write-headers_
+        status-code
         --message=message
-        --content_length=null
-        --has_body=has_body
+        --content-length=null
+        --has-body=has-body
 
   /**
   Deprecated. Use $(out).write instead.
@@ -204,42 +204,42 @@ class ResponseWriter extends Object with io.OutMixin:
   write data/io.Data:
     out.write data
 
-  try_write_ data/io.Data from/int to/int -> int:
-    write_headers_ STATUS_OK --message=null --content_length=null --has_body=true
-    return body_writer_.try_write data from to
+  try-write_ data/io.Data from/int to/int -> int:
+    write-headers_ STATUS-OK --message=null --content-length=null --has-body=true
+    return body-writer_.try-write data from to
 
-  write_headers_ status_code/int --message/string? --content_length/int? --has_body/bool:
-    if body_writer_: return
+  write-headers_ status-code/int --message/string? --content-length/int? --has-body/bool:
+    if body-writer_: return
     // Keep track of the content length, so we can report an error if not enough
     // data is written.
-    if content_length:
-      content_length_ = content_length
+    if content-length:
+      content-length_ = content-length
     else if headers.contains "Content-Length":
-      content_length_ = int.parse (headers.single "Content-Length")
-    body_writer_ = connection_.send_headers
-        "$VERSION $status_code $(message or (status_message status_code))\r\n"
+      content-length_ = int.parse (headers.single "Content-Length")
+    body-writer_ = connection_.send-headers
+        "$VERSION $status-code $(message or (status-message status-code))\r\n"
         headers
-        --is_client_request=false
-        --content_length=content_length
-        --has_body=has_body
+        --is-client-request=false
+        --content-length=content-length
+        --has-body=has-body
 
   /**
   Redirects the request to the given $location.
 
-  Neither $write_headers_ nor any write to $out must have happened.
+  Neither $write-headers_ nor any write to $out must have happened.
   */
-  redirect status_code/int location/string --message/string?=null --body/string?=null -> none:
+  redirect status-code/int location/string --message/string?=null --body/string?=null -> none:
     headers.set "Location" location
     if body and body.size > 0:
-      write_headers_ status_code --message=message --content_length=body.size --has_body=true
-      body_writer_.write body
+      write-headers_ status-code --message=message --content-length=body.size --has-body=true
+      body-writer_.write body
     else:
-      write_headers_ status_code --message=message --content_length=null --has_body=false
+      write-headers_ status-code --message=message --content-length=null --has-body=false
 
   // Returns true if the connection was closed due to an error.
-  close_on_exception_ message/string -> bool:
+  close-on-exception_ message/string -> bool:
     logger_.info message
-    if body_writer_:
+    if body-writer_:
       // We already sent a good response code, but then something went
       // wrong.  Hard close (RST) the connection to signal to the other end
       // that we failed.
@@ -249,10 +249,10 @@ class ResponseWriter extends Object with io.OutMixin:
     else:
       // We don't have a body writer, so perhaps we didn't send a response
       // yet.  Send a 500 to indicate an internal server error.
-      write_headers_ STATUS_INTERNAL_SERVER_ERROR
+      write-headers_ STATUS-INTERNAL-SERVER-ERROR
           --message=message
-          --content_length=null
-          --has_body=false
+          --content-length=null
+          --has-body=false
       return false
 
   /**
@@ -262,24 +262,24 @@ class ResponseWriter extends Object with io.OutMixin:
     user's router did not call it.
   */
   close -> none:
-    mark_writer-closed_
-    if body_writer_:
-      too_little := content_length_ ? (body_writer_.processed < content_length_) : false
-      body_writer_.close
-      if too_little:
+    mark-writer-closed_
+    if body-writer_:
+      too-little := content-length_ ? (body-writer_.processed < content-length_) : false
+      body-writer_.close
+      if too-little:
         // This is typically the case if the user's code set a Content-Length
         // header, but then didn't write enough data.
         // Will hard close the connection.
-        close_on_exception_ "Not enough data produced by server"
+        close-on-exception_ "Not enough data produced by server"
         return
     else:
       // Nothing was written, yet we are already closing.  This indicates
       // We return a 500 error code and log the issue.  We don't need to close
       // the connection.
-      write_headers_ STATUS_INTERNAL_SERVER_ERROR
+      write-headers_ STATUS-INTERNAL-SERVER-ERROR
           --message=null
-          --content_length=null
-          --has_body=false
+          --content-length=null
+          --has-body=false
       logger_.info "Returned from router without any data for the client"
 
   detach -> tcp.Socket:

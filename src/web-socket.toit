@@ -6,7 +6,7 @@ import bitmap show blit XOR
 import crypto.sha1 show sha1
 import encoding.base64
 import io
-import io show BIG_ENDIAN
+import io show BIG-ENDIAN
 import monitor show Semaphore
 import net.tcp
 
@@ -15,42 +15,42 @@ import .request
 import .response
 import .client show Client
 import .server
-import .status_codes
+import .status-codes
 
-OPCODE_CONTINUATION_ ::= 0
-OPCODE_TEXT_         ::= 1
-OPCODE_BINARY_       ::= 2
-OPCODE_CLOSE_        ::= 8
-OPCODE_PING_         ::= 9
-OPCODE_PONG_         ::= 10
-FIN_FLAG_            ::= 0x80
-EIGHT_BYTE_SIZE_     ::= 127
-TWO_BYTE_SIZE_       ::= 126
-MAX_ONE_BYTE_SIZE_   ::= 125
-MASKING_FLAG_        ::= 0x80
+OPCODE-CONTINUATION_ ::= 0
+OPCODE-TEXT_         ::= 1
+OPCODE-BINARY_       ::= 2
+OPCODE-CLOSE_        ::= 8
+OPCODE-PING_         ::= 9
+OPCODE-PONG_         ::= 10
+FIN-FLAG_            ::= 0x80
+EIGHT-BYTE-SIZE_     ::= 127
+TWO-BYTE-SIZE_       ::= 126
+MAX-ONE-BYTE-SIZE_   ::= 125
+MASKING-FLAG_        ::= 0x80
 
 /**
 A WebSocket connection.
 A bidirectional socket connection capable of sending binary or text messages
   according to RFC 6455.
-Obtained from the $Client.web_socket or the $Server.web_socket methods.
+Obtained from the $Client.web-socket or the $Server.web-socket methods.
 Currently does not implement ping and pong packets.
 */
 class WebSocket:
   socket_ /tcp.Socket
-  current_writer_ /WebSocketWriter? := null
-  writer_semaphore_ := Semaphore --count=1
-  current_reader_ /WebSocketReader? := null
-  is_client_ /bool
+  current-writer_ /WebSocketWriter? := null
+  writer-semaphore_ := Semaphore --count=1
+  current-reader_ /WebSocketReader? := null
+  is-client_ /bool
 
   constructor .socket_ --client/bool:
-    is_client_ = client
+    is-client_ = client
 
   read_ -> ByteArray?:
     return socket_.in.read
 
-  unread_ byte_array/ByteArray -> none:
-    socket_.in.unget byte_array
+  unread_ byte-array/ByteArray -> none:
+    socket_.in.unget byte-array
 
   /**
   Reads a whole message, returning it as a string or a ByteArray.
@@ -58,29 +58,29 @@ class WebSocket:
   Messages transmitted as text are returned as strings.
   Messages transmitted as binary are returned as byte arrays.
   For connections with potentially large messages, consider using
-    $start_receiving instead to stream the data.
-  With $force_byte_array returns a byte array even if the
+    $start-receiving instead to stream the data.
+  With $force-byte-array returns a byte array even if the
     peer marks the message as text.  This can be useful to avoid
     exceptions if the peer is marking invalid UTF-8 messages as
     text.
   */
-  receive --force_byte_array=false -> any?:
-    reader := start_receiving
+  receive --force-byte-array=false -> any?:
+    reader := start-receiving
     if reader == null: return null
     list := []
     while chunk := reader.read:
       list.add chunk
-    text := reader.is_text and not force_byte_array
+    text := reader.is-text and not force-byte-array
     if list.size == 0: return text ? "" : #[]
-    if list.size == 1: return text ? list[0].to_string : list[0]
-    size := list.reduce --initial=0: | sz byte_array | sz + byte_array.size
+    if list.size == 1: return text ? list[0].to-string : list[0]
+    size := list.reduce --initial=0: | sz byte-array | sz + byte-array.size
     result := ByteArray size
     position := 0
     list.do:
       result.replace position it
       position += it.size
     list = []  // Free up some memory before the big to_string.
-    return text ? result.to_string : result
+    return text ? result.to-string : result
 
   /**
   Returns a reader for the next message sent to us on the WebSocket.
@@ -88,77 +88,77 @@ class WebSocket:
   Should not be called until the previous reader has been fully read.
   See also $receive if you know messages are small enough to fit in memory.
   */
-  start_receiving -> WebSocketReader?:
-    if current_reader_ != null:
-      close --status_code=STATUS_WEBSOCKET_UNEXPECTED_CONDITION
+  start-receiving -> WebSocketReader?:
+    if current-reader_ != null:
+      close --status-code=STATUS-WEBSOCKET-UNEXPECTED-CONDITION
       throw "PREVIOUS_READER_NOT_FINISHED"
-    fragment_reader := null
-    while not fragment_reader:
-      fragment_reader = next_fragment_
-      if fragment_reader == null or fragment_reader.is_close :
+    fragment-reader := null
+    while not fragment-reader:
+      fragment-reader = next-fragment_
+      if fragment-reader == null or fragment-reader.is-close :
         return null
-      fragment_reader = handle_any_ping_ fragment_reader
-    if fragment_reader.is_continuation:
-      close --status_code=STATUS_WEBSOCKET_PROTOCOL_ERROR
+      fragment-reader = handle-any-ping_ fragment-reader
+    if fragment-reader.is-continuation:
+      close --status-code=STATUS-WEBSOCKET-PROTOCOL-ERROR
       throw "PROTOCOL_ERROR"
-    size := fragment_reader.size_
-    current_reader_ = WebSocketReader.private_ this fragment_reader fragment_reader.is_text fragment_reader.size
-    return current_reader_
+    size := fragment-reader.size_
+    current-reader_ = WebSocketReader.private_ this fragment-reader fragment-reader.is-text fragment-reader.size
+    return current-reader_
 
-  handle_any_ping_ next_fragment/FragmentReader_ -> FragmentReader_?:
-    if next_fragment.is_pong:
-      while next_fragment.read:
+  handle-any-ping_ next-fragment/FragmentReader_ -> FragmentReader_?:
+    if next-fragment.is-pong:
+      while next-fragment.read:
         null  // Drain the pong.
       return null  // Nothing to do in response to a pong.
-    if next_fragment.is_ping:
+    if next-fragment.is-ping:
       payload := #[]
-      while packet := next_fragment.read:
+      while packet := next-fragment.read:
         payload += packet
-      schedule_ping_ payload OPCODE_PONG_
+      schedule-ping_ payload OPCODE-PONG_
       return null
-    return next_fragment
+    return next-fragment
 
   // Reads the header of the next fragment.
-  next_fragment_ -> FragmentReader_?:
+  next-fragment_ -> FragmentReader_?:
     if socket_ == null: return null  // Closed.
 
     reader := socket_.in
     if not reader.try-ensure-buffered 1: return null
 
-    control_bits := reader.read-byte
-    masking_length_byte := reader.read-byte
-    masking := (masking_length_byte & MASKING_FLAG_) != 0
-    len := masking_length_byte & 0x7f
+    control-bits := reader.read-byte
+    masking-length-byte := reader.read-byte
+    masking := (masking-length-byte & MASKING-FLAG_) != 0
+    len := masking-length-byte & 0x7f
 
-    if len == TWO_BYTE_SIZE_:
+    if len == TWO-BYTE-SIZE_:
       len = reader.big-endian.read-uint16 // BIG_ENDIAN.uint16 pending_ 2
-    else if len == EIGHT_BYTE_SIZE_:
+    else if len == EIGHT-BYTE-SIZE_:
       len = reader.big-endian.read-int64  // BIG_ENDIAN.int64 pending_ 2
 
-    masking_bytes := null
+    masking-bytes := null
     if masking:
-      masking_bytes = reader.read-bytes 4
-      if masking_bytes == #[0, 0, 0, 0]:
-        masking_bytes = null
-    result := FragmentReader_ this len control_bits --masking_bytes=masking_bytes
-    if not result.is_ok_:
-      close --status_code=STATUS_WEBSOCKET_PROTOCOL_ERROR
+      masking-bytes = reader.read-bytes 4
+      if masking-bytes == #[0, 0, 0, 0]:
+        masking-bytes = null
+    result := FragmentReader_ this len control-bits --masking-bytes=masking-bytes
+    if not result.is-ok_:
+      close --status-code=STATUS-WEBSOCKET-PROTOCOL-ERROR
       throw "PROTOCOL_ERROR"
 
-    if result.is_close:
+    if result.is-close:
       if result.size >= 2:
         // Two-byte close reason code.
         payload := #[]
         while packet := result.read:
           payload += packet
-        code := BIG_ENDIAN.uint16 payload 0
-        if code == STATUS_WEBSOCKET_NORMAL_CLOSURE or code == STATUS_WEBSOCKET_GOING_AWAY:
+        code := BIG-ENDIAN.uint16 payload 0
+        if code == STATUS-WEBSOCKET-NORMAL-CLOSURE or code == STATUS-WEBSOCKET-GOING-AWAY:
           // One of the expected no-error codes.
-          current_reader_ = null
+          current-reader_ = null
           return null
         throw "Peer closed with code $code"
       // No code provided.  We treat this as a normal close.
-      current_reader_ = null
+      current-reader_ = null
       return null
 
     return result
@@ -172,7 +172,7 @@ class WebSocket:
     completely sent.
   */
   send data/io.Data -> none:
-    writer := start_sending --size=data.byte-size --opcode=((data is string) ? OPCODE_TEXT_ : OPCODE_BINARY_)
+    writer := start-sending --size=data.byte-size --opcode=((data is string) ? OPCODE-TEXT_ : OPCODE-BINARY_)
     writer.write data
     writer.close
 
@@ -187,60 +187,60 @@ class WebSocket:
   The message is sent as a text message if the first data written to the
     writer is a string, otherwise as a binary message.
   Returns a writer, which must be completed (all data sent, and closed) before
-    another message can be sent.  Calls to $send and $start_sending will
+    another message can be sent.  Calls to $send and $start-sending will
     block until the previous writer is completed.
   */
-  start_sending --size/int?=null --opcode/int?=null -> io.CloseableWriter:
-    writer_semaphore_.down
-    assert: current_writer_ == null
-    current_writer_ = WebSocketWriter.private_ this size --masking=is_client_ --opcode=opcode
-    return current_writer_
+  start-sending --size/int?=null --opcode/int?=null -> io.CloseableWriter:
+    writer-semaphore_.down
+    assert: current-writer_ == null
+    current-writer_ = WebSocketWriter.private_ this size --masking=is-client_ --opcode=opcode
+    return current-writer_
 
   /**
   Send a ping with the given $payload, which is a string or a ByteArray.
   Any pongs we get back are ignored.
   If we are in the middle of sending a long message that was started with
-    $start_sending then the ping may be interleaved with the fragments of the
+    $start-sending then the ping may be interleaved with the fragments of the
     long message.
   */
   ping payload -> none:
-    schedule_ping_ payload OPCODE_PING_
+    schedule-ping_ payload OPCODE-PING_
 
-  schedule_ping_ payload opcode/int -> none:
-    if current_writer_:
-      current_writer_.pending_pings_.add [opcode, payload]
+  schedule-ping_ payload opcode/int -> none:
+    if current-writer_:
+      current-writer_.pending-pings_.add [opcode, payload]
     else:
-      writer_semaphore_.down
+      writer-semaphore_.down
       try:
         // Send immediately.
-        writer := WebSocketWriter.private_ this payload.size --masking=is_client_ --opcode=opcode
+        writer := WebSocketWriter.private_ this payload.size --masking=is-client_ --opcode=opcode
         writer.write payload
         writer.close
       finally:
-        critical_do --no-respect_deadline:
-          writer_semaphore_.up
+        critical-do --no-respect-deadline:
+          writer-semaphore_.up
 
-  writer_close_ writer/WebSocketWriter -> none:
-    current_writer_ = null
-    writer_semaphore_.up
+  writer-close_ writer/WebSocketWriter -> none:
+    current-writer_ = null
+    writer-semaphore_.up
 
-  write_ data/io.Data from=0 to=data.byte_size -> none:
+  write_ data/io.Data from=0 to=data.byte-size -> none:
     socket_.out.write data from to
 
-  reader_close_ -> none:
-    current_reader_ = null
+  reader-close_ -> none:
+    current-reader_ = null
 
   /**
   Closes the websocket.
   Call this if we do not wish to send or receive any more messages.
-    After calling this, you do not need to call $close_write.
+    After calling this, you do not need to call $close-write.
   May close abruptly in an unclean way.
   If we are in a suitable place in the protocol, sends a close packet first.
   */
-  close --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
-    close_write --status_code=status_code
+  close --status-code/int=STATUS-WEBSOCKET-NORMAL-CLOSURE:
+    close-write --status-code=status-code
     socket_.close
-    current_reader_ = null
+    current-reader_ = null
 
   /**
   Closes the websocket for writing.
@@ -250,26 +250,26 @@ class WebSocket:
     Otherwise, it will close abruptly, without sending the packet.
   Most peers will respond by closing the other direction.
   */
-  close_write --status_code/int=STATUS_WEBSOCKET_NORMAL_CLOSURE:
-    if current_writer_ == null:
-      writer_semaphore_.down
+  close-write --status-code/int=STATUS-WEBSOCKET-NORMAL-CLOSURE:
+    if current-writer_ == null:
+      writer-semaphore_.down
       try:
         // If we are not in the middle of a message, we can send a close packet.
         catch:  // Catch because the write end may already be closed.
-          writer := WebSocketWriter.private_ this 2 --masking=is_client_ --opcode=OPCODE_CLOSE_
+          writer := WebSocketWriter.private_ this 2 --masking=is-client_ --opcode=OPCODE-CLOSE_
           payload := ByteArray 2
-          BIG_ENDIAN.put_uint16 payload 0 status_code
+          BIG-ENDIAN.put-uint16 payload 0 status-code
           writer.write payload
           writer.close
       finally:
-        critical_do --no-respect_deadline:
-          writer_semaphore_.up
+        critical-do --no-respect-deadline:
+          writer-semaphore_.up
     socket_.out.close
-    if current_writer_:
-      current_writer_ = null
-      writer_semaphore_.up
+    if current-writer_:
+      current-writer_ = null
+      writer-semaphore_.up
 
-  static add_client_upgrade_headers_ headers/Headers -> string:
+  static add-client-upgrade-headers_ headers/Headers -> string:
     // The WebSocket nonce is not very important and does not need to be
     // cryptographically random.
     nonce := base64.encode (ByteArray 16: random 0x100)
@@ -279,15 +279,15 @@ class WebSocket:
     headers.add "Connection" "Upgrade"
     return nonce
 
-  static check_client_upgrade_response_ response/Response nonce/string -> none:
-    if response.status_code != STATUS_SWITCHING_PROTOCOLS:
-      throw "WebSocket upgrade failed with $response.status_code $response.status_message"
-    upgrade_header := response.headers.single "Upgrade"
-    connection_header := response.headers.single "Connection"
-    if not upgrade_header
-        or not connection_header
-        or (Headers.ascii_normalize_ upgrade_header) != "Websocket"
-        or (Headers.ascii_normalize_ connection_header) != "Upgrade"
+  static check-client-upgrade-response_ response/Response nonce/string -> none:
+    if response.status-code != STATUS-SWITCHING-PROTOCOLS:
+      throw "WebSocket upgrade failed with $response.status-code $response.status-message"
+    upgrade-header := response.headers.single "Upgrade"
+    connection-header := response.headers.single "Connection"
+    if not upgrade-header
+        or not connection-header
+        or (Headers.ascii-normalize_ upgrade-header) != "Websocket"
+        or (Headers.ascii-normalize_ connection-header) != "Upgrade"
         or (response.headers.single "Sec-WebSocket-Accept") != (WebSocket.response_ nonce):
       throw "MISSING_HEADER_IN_RESPONSE"
     if response.headers.single "Sec-WebSocket-Extensions"
@@ -300,30 +300,30 @@ class WebSocket:
     and sends a response confirming the upgrade.
   Otherwise responds with an error code and returns null.
   */
-  static check_server_upgrade_request_ request/RequestIncoming response_writer/ResponseWriter -> string?:
-    connection_header := request.headers.single "Connection"
-    upgrade_header := request.headers.single "Upgrade"
-    version_header := request.headers.single "Sec-WebSocket-Version"
+  static check-server-upgrade-request_ request/RequestIncoming response-writer/ResponseWriter -> string?:
+    connection-header := request.headers.single "Connection"
+    upgrade-header := request.headers.single "Upgrade"
+    version-header := request.headers.single "Sec-WebSocket-Version"
     nonce := request.headers.single "Sec-WebSocket-Key"
     message := null
     if nonce == null:                                                  message = "No nonce"
     else if nonce.size != 24:                                          message = "Bad nonce size"
-    else if not connection_header or not upgrade_header:               message = "No upgrade headers"
-    else if (Headers.ascii_normalize_ connection_header) != "Upgrade": message = "No Connection: Upgrade"
-    else if (Headers.ascii_normalize_ upgrade_header) != "Websocket":  message = "No Upgrade: websocket"
-    else if version_header != "13":                                    message = "Unrecognized Websocket version"
+    else if not connection-header or not upgrade-header:               message = "No upgrade headers"
+    else if (Headers.ascii-normalize_ connection-header) != "Upgrade": message = "No Connection: Upgrade"
+    else if (Headers.ascii-normalize_ upgrade-header) != "Websocket":  message = "No Upgrade: websocket"
+    else if version-header != "13":                                    message = "Unrecognized Websocket version"
     else:
-      response_writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
-      response_writer.headers.add "Connection" "Upgrade"
-      response_writer.headers.add "Upgrade" "websocket"
+      response-writer.headers.add "Sec-WebSocket-Accept" (response_ nonce)
+      response-writer.headers.add "Connection" "Upgrade"
+      response-writer.headers.add "Upgrade" "websocket"
       return nonce
-    response_writer.write_headers STATUS_BAD_REQUEST --message=message
+    response-writer.write-headers STATUS-BAD-REQUEST --message=message
     return null
 
   static response_ nonce/string -> string:
-    expected_response := base64.encode
+    expected-response := base64.encode
         sha1 nonce + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-    return expected_response
+    return expected-response
 
 /**
 A writer for writing a single message on a WebSocket connection.
@@ -331,103 +331,103 @@ A writer for writing a single message on a WebSocket connection.
 class WebSocketWriter extends io.CloseableWriter:
   owner_ /WebSocket? := ?
   size_ /int?
-  remaining_in_fragment_ /int := 0
-  fragment_sent_ /bool := false
+  remaining-in-fragment_ /int := 0
+  fragment-sent_ /bool := false
   masking_ /bool
   // Pings and pongs can be interleaved with the fragments in a message.
-  pending_pings_ /List := []
+  pending-pings_ /List := []
 
   constructor.private_ .owner_ .size_ --masking/bool --opcode/int?=null:
     masking_ = masking
     if size_ and opcode:
-      remaining_in_fragment_ = write_fragment_header_ size_ opcode size_
+      remaining-in-fragment_ = write-fragment-header_ size_ opcode size_
 
-  try_write_ data/io.Data from/int to/int -> int:
+  try-write_ data/io.Data from/int to/int -> int:
     if owner_ == null: throw "ALREADY_CLOSED"
-    total_size := to - from
+    total-size := to - from
     while from != to:
       // If no more can be written in the current fragment we need to write a
       // new fragment header.
-      if remaining_in_fragment_ == 0:
-        write_any_ping_  // Interleave pongs with message fragments.
+      if remaining-in-fragment_ == 0:
+        write-any-ping_  // Interleave pongs with message fragments.
         // Determine opcode for the new fragment.
-        opcode := data is string ? OPCODE_TEXT_ : OPCODE_BINARY_
-        if fragment_sent_:
-          opcode = OPCODE_CONTINUATION_
+        opcode := data is string ? OPCODE-TEXT_ : OPCODE-BINARY_
+        if fragment-sent_:
+          opcode = OPCODE-CONTINUATION_
         else:
-          fragment_sent_ = true
+          fragment-sent_ = true
 
-        remaining_in_fragment_ = write_fragment_header_ (to - from) opcode size_
+        remaining-in-fragment_ = write-fragment-header_ (to - from) opcode size_
 
-      while from < to and remaining_in_fragment_ != 0:
-        size := min (to - from) remaining_in_fragment_
+      while from < to and remaining-in-fragment_ != 0:
+        size := min (to - from) remaining-in-fragment_
         // We don't use slices because data might be a string with UTF-8
         // sequences in it.
         owner_.write_ data from (from + size)
         from += size
-        remaining_in_fragment_ -= size
+        remaining-in-fragment_ -= size
 
-    if remaining_in_fragment_ == 0: write_any_ping_
+    if remaining-in-fragment_ == 0: write-any-ping_
 
-    return total_size
+    return total-size
 
-  write_any_ping_ -> none:
-    while owner_ and pending_pings_.size != 0:
-      assert: remaining_in_fragment_ == 0
-      item := pending_pings_[0]
-      pending_pings_ = pending_pings_.copy 1
+  write-any-ping_ -> none:
+    while owner_ and pending-pings_.size != 0:
+      assert: remaining-in-fragment_ == 0
+      item := pending-pings_[0]
+      pending-pings_ = pending-pings_.copy 1
       opcode := item[0]
       payload := item[1]
-      write_fragment_header_ payload.size opcode payload.size
+      write-fragment-header_ payload.size opcode payload.size
       owner_.write_ payload
 
-  write_fragment_header_ max_size/int opcode/int size/int?:
+  write-fragment-header_ max-size/int opcode/int size/int?:
     header /ByteArray := ?
     // If the protocol requires it, we supply a 4 byte mask, but it's always
     // zero so we don't need to apply it on send.
-    masking_flag := masking_ ? MASKING_FLAG_ : 0
-    remaining_in_fragment := ?
+    masking-flag := masking_ ? MASKING-FLAG_ : 0
+    remaining-in-fragment := ?
     if size:
       // We know the size.  Write a single fragment with the fin flag and the
       // exact size.
-      if opcode == OPCODE_CONTINUATION_: throw "TOO_MUCH_WRITTEN"
-      remaining_in_fragment = size
+      if opcode == OPCODE-CONTINUATION_: throw "TOO_MUCH_WRITTEN"
+      remaining-in-fragment = size
       if size > 0xffff:
         header = ByteArray (masking_ ? 14 : 10)
-        header[1] = EIGHT_BYTE_SIZE_ | masking_flag
-        BIG_ENDIAN.put_int64 header 2 size
-      else if size > MAX_ONE_BYTE_SIZE_:
+        header[1] = EIGHT-BYTE-SIZE_ | masking-flag
+        BIG-ENDIAN.put-int64 header 2 size
+      else if size > MAX-ONE-BYTE-SIZE_:
         header = ByteArray (masking_ ? 8 : 4)
-        header[1] = TWO_BYTE_SIZE_ | masking_flag
-        BIG_ENDIAN.put_uint16 header 2 size
+        header[1] = TWO-BYTE-SIZE_ | masking-flag
+        BIG-ENDIAN.put-uint16 header 2 size
       else:
         header = ByteArray (masking_ ? 6 : 2)
-        header[1] = size | masking_flag
-      header[0] = opcode | FIN_FLAG_
+        header[1] = size | masking-flag
+      header[0] = opcode | FIN-FLAG_
     else:
       // We don't know the size.  Write multiple fragments of up to
       // 125 bytes.
-      remaining_in_fragment = min MAX_ONE_BYTE_SIZE_ max_size
+      remaining-in-fragment = min MAX-ONE-BYTE-SIZE_ max-size
       header = ByteArray (masking_ ? 6 : 2)
       header[0] = opcode
-      header[1] = remaining_in_fragment | masking_flag
+      header[1] = remaining-in-fragment | masking-flag
 
     owner_.write_ header
 
-    return remaining_in_fragment
+    return remaining-in-fragment
 
   close_:
-    if remaining_in_fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
+    if remaining-in-fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
     if owner_:
       if size_ == null:
         // If size is null, we didn't know the size of the complete message ahead
         // of time, which means we didn't set the fin flag on the last packet.  Send
         // a zero length packet with a fin flag.
         header := ByteArray 2
-        header[0] = FIN_FLAG_ | (fragment_sent_ ? OPCODE_CONTINUATION_ : OPCODE_BINARY_)
+        header[0] = FIN-FLAG_ | (fragment-sent_ ? OPCODE-CONTINUATION_ : OPCODE-BINARY_)
         owner_.write_ header
-      write_any_ping_
-      owner_.writer_close_ this  // Notify the websocket that we are done.
+      write-any-ping_
+      owner_.writer-close_ this  // Notify the websocket that we are done.
       owner_ = null
 
 /**
@@ -435,8 +435,8 @@ A reader for an individual message sent to us.
 */
 class WebSocketReader extends io.Reader:
   owner_ /WebSocket? := ?
-  is_text /bool
-  fragment_reader_ /FragmentReader_ := ?
+  is-text /bool
+  fragment-reader_ /FragmentReader_ := ?
 
   /**
   The size of the incoming message if known.
@@ -444,7 +444,7 @@ class WebSocketReader extends io.Reader:
   */
   size /int?
 
-  constructor.private_ .owner_ .fragment_reader_ .is_text .size:
+  constructor.private_ .owner_ .fragment-reader_ .is-text .size:
 
   /**
   Returns a byte array, or null if the message has been fully read.
@@ -452,81 +452,81 @@ class WebSocketReader extends io.Reader:
     ByteArrays.
   */
   read_ -> ByteArray?:
-    result := fragment_reader_.read
+    result := fragment-reader_.read
     if result == null:
-      if fragment_reader_.is_fin:
+      if fragment-reader_.is-fin:
         if owner_:
-          owner_.reader_close_
+          owner_.reader-close_
           owner_ = null
           return null
       if owner_ == null: return null  // Closed.
-      next_fragment := null
-      while not next_fragment:
-        next_fragment = owner_.next_fragment_
-        if not next_fragment: return null  // Closed.
-        next_fragment = owner_.handle_any_ping_ next_fragment
-      fragment_reader_ = next_fragment
-      if not fragment_reader_.is_continuation:
+      next-fragment := null
+      while not next-fragment:
+        next-fragment = owner_.next-fragment_
+        if not next-fragment: return null  // Closed.
+        next-fragment = owner_.handle-any-ping_ next-fragment
+      fragment-reader_ = next-fragment
+      if not fragment-reader_.is-continuation:
         throw "PROTOCOL_ERROR"
-      result = fragment_reader_.read
-    if fragment_reader_.is_fin and fragment_reader_.is_exhausted:
+      result = fragment-reader_.read
+    if fragment-reader_.is-fin and fragment-reader_.is-exhausted:
       if owner_:
-        owner_.reader_close_
+        owner_.reader-close_
         owner_ = null
     return result
 
 class FragmentReader_:
   owner_ /WebSocket
-  control_bits_ /int
+  control-bits_ /int
   size_ /int
   received_ := 0
-  masking_bytes /ByteArray?
+  masking-bytes /ByteArray?
 
-  constructor .owner_ .size_ .control_bits_ --.masking_bytes/ByteArray?=null:
+  constructor .owner_ .size_ .control-bits_ --.masking-bytes/ByteArray?=null:
 
-  is_continuation -> bool: return control_bits_ & 0x0f == OPCODE_CONTINUATION_
-  is_text -> bool:         return control_bits_ & 0x0f == OPCODE_TEXT_
-  is_binary -> bool:       return control_bits_ & 0x0f == OPCODE_BINARY_
-  is_close -> bool:        return control_bits_ & 0x0f == OPCODE_CLOSE_
-  is_ping -> bool:         return control_bits_ & 0x0f == OPCODE_PING_
-  is_pong -> bool:         return control_bits_ & 0x0f == OPCODE_PONG_
-  is_fin -> bool:          return control_bits_ & FIN_FLAG_ != 0
-  is_exhausted -> bool:    return received_ == size_
+  is-continuation -> bool: return control-bits_ & 0x0f == OPCODE-CONTINUATION_
+  is-text -> bool:         return control-bits_ & 0x0f == OPCODE-TEXT_
+  is-binary -> bool:       return control-bits_ & 0x0f == OPCODE-BINARY_
+  is-close -> bool:        return control-bits_ & 0x0f == OPCODE-CLOSE_
+  is-ping -> bool:         return control-bits_ & 0x0f == OPCODE-PING_
+  is-pong -> bool:         return control-bits_ & 0x0f == OPCODE-PONG_
+  is-fin -> bool:          return control-bits_ & FIN-FLAG_ != 0
+  is-exhausted -> bool:    return received_ == size_
 
-  is_ok_ -> bool:
-    if control_bits_ & 0x70 != 0: return false
-    opcode := control_bits_ & 0xf
+  is-ok_ -> bool:
+    if control-bits_ & 0x70 != 0: return false
+    opcode := control-bits_ & 0xf
     return opcode < 3 or 8 <= opcode <= 10
 
   read -> ByteArray?:
     if received_ == size_: return null
-    next_byte_array := owner_.read_
-    if next_byte_array == null: throw "CONNECTION_CLOSED"
+    next-byte-array := owner_.read_
+    if next-byte-array == null: throw "CONNECTION_CLOSED"
     max := size_ - received_
-    if next_byte_array.size > max:
-      owner_.unread_ next_byte_array[max..]
-      next_byte_array = next_byte_array[..max]
-    if masking_bytes:
-      unmask_bytes_ next_byte_array masking_bytes received_
-    received_ += next_byte_array.size
-    return next_byte_array
+    if next-byte-array.size > max:
+      owner_.unread_ next-byte-array[max..]
+      next-byte-array = next-byte-array[..max]
+    if masking-bytes:
+      unmask-bytes_ next-byte-array masking-bytes received_
+    received_ += next-byte-array.size
+    return next-byte-array
 
   size -> int?:
-    if control_bits_ & FIN_FLAG_ == 0: return null
+    if control-bits_ & FIN-FLAG_ == 0: return null
     return size_
 
-  static unmask_bytes_ byte_array/ByteArray masking_bytes/ByteArray received/int -> none:
-    for i := 0; i < byte_array.size; i++:
-      if received & 3 == 0 and i + 4 < byte_array.size:
+  static unmask-bytes_ byte-array/ByteArray masking-bytes/ByteArray received/int -> none:
+    for i := 0; i < byte-array.size; i++:
+      if received & 3 == 0 and i + 4 < byte-array.size:
         // When we are at the start of the masking bytes we can accelerate with blit.
         blit
-          masking_bytes           // Source.
-          byte_array[i..]         // Destination.
+          masking-bytes           // Source.
+          byte-array[i..]         // Destination.
           4                       // Line width of 4 bytes.
-          --source_line_stride=0  // Restart at the beginning of the masking bytes on every line.
+          --source-line-stride=0  // Restart at the beginning of the masking bytes on every line.
           --operation=XOR         // dest[i] ^= source[j].
         // Skip the bytes we just blitted.
-        blitted := round_down (byte_array.size - i) 4
+        blitted := round-down (byte-array.size - i) 4
         i += blitted
-      if i < byte_array.size:
-        byte_array[i] ^= masking_bytes[received++ & 3]
+      if i < byte-array.size:
+        byte-array[i] ^= masking-bytes[received++ & 3]

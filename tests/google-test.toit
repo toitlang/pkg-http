@@ -5,14 +5,14 @@
 import http
 import net
 import net.x509
-import certificate_roots
+import certificate-roots
 
 main:
   network := net.open
-  security_store := http.SecurityStoreInMemory
+  security-store := http.SecurityStoreInMemory
   client := http.Client.tls network
-    --security_store=security_store
-    --root_certificates=[certificate_roots.GTS_ROOT_R1]
+    --security-store=security-store
+    --root-certificates=[certificate-roots.GTS-ROOT-R1]
   response := client.get "script.google.com" "/"
   while data := response.body.read:
   response = client.get "www.google.com" "/"
@@ -22,6 +22,6 @@ main:
   // Deliberately break the session state so that the server rejects our
   // attempt to use an abbreviated handshake.  We harmlessly retry without the
   // session data.
-  security_store.session_data_["www.google.com:443"][15] ^= 42
+  security-store.session-data_["www.google.com:443"][15] ^= 42
   response = client.get "www.google.com" "/"
   while data := response.body.read:

@@ -9,15 +9,15 @@ import net.x509
 main:
   network := net.open
   client := http.Client.tls network
-    --root_certificates=[SERVER_CERT]
+    --root-certificates=[SERVER-CERT]
 
   response := client.get "localhost:8080" "/json"
   while data := response.body.read:
-    print data.to_string
+    print data.to-string
 
   client.close
 
-SERVER_CERT ::= x509.Certificate.parse """
+SERVER-CERT ::= x509.Certificate.parse """
 -----BEGIN CERTIFICATE-----
 MIIDkzCCAnugAwIBAgIUb3nSgGzXBdgsDhg8shods8EHszAwDQYJKoZIhvcNAQEL
 BQAwWTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM

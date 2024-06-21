@@ -5,33 +5,33 @@
 import expect show *
 import http
 import net
-import http.web_socket show FragmentReader_
+import http.web-socket show FragmentReader_
 
 // Sets up a web server that can switch to websocket mode on the "/" path.
 // The server just sends back everything it gets.
 // Sets up a client that sends files and expects to receive them back.
 
 main:
-  unmark_bytes_test
-  client_server_test
+  unmark-bytes-test
+  client-server-test
 
-client_server_test:
+client-server-test:
   network := net.open
-  port := start_server network
-  run_client network port
+  port := start-server network
+  run-client network port
 
-run_client network port/int -> none:
+run-client network port/int -> none:
   client := http.Client network
 
-  web_socket := client.web_socket --host="localhost" --port=port --path="/"
+  web-socket := client.web-socket --host="localhost" --port=port --path="/"
 
-  task:: client_reading web_socket
+  task:: client-reading web-socket
 
-  client_sending web_socket
+  client-sending web-socket
 
-  web_socket.close_write
+  web-socket.close-write
 
-TEST_PACKETS := [
+TEST-PACKETS := [
     "Hello, World!",
     "*" * 125,
     (ByteArray 125: it),
@@ -48,74 +48,74 @@ TEST_PACKETS := [
     "€€£" * 40,
 ]
 
-sent_but_not_reflected := 0
+sent-but-not-reflected := 0
 
-client_sending web_socket -> none:
-  TEST_PACKETS.do: | packet |
+client-sending web-socket -> none:
+  TEST-PACKETS.do: | packet |
     2.repeat:
       // Send with a single call to `send`.
-      sent_but_not_reflected++
-      web_socket.send packet
+      sent-but-not-reflected++
+      web-socket.send packet
       // Send with a writer.
-      sent_but_not_reflected++
-      writer := web_socket.start_sending
+      sent-but-not-reflected++
+      writer := web-socket.start-sending
       pos := 0
-      ping_sent := false
+      ping-sent := false
       print packet.size
       while pos < packet.size:
         pos += writer.write packet pos
-        if pos > 800 and not ping_sent:
+        if pos > 800 and not ping-sent:
           print "Send ping"
-          web_socket.ping "hello"
-          ping_sent = true
+          web-socket.ping "hello"
+          ping-sent = true
       writer.close
 
-client_reading web_socket -> none:
-  TEST_PACKETS.do: | packet |
+client-reading web-socket -> none:
+  TEST-PACKETS.do: | packet |
     // Receive with a reader.
     2.repeat:
-      reader := web_socket.start_receiving
+      reader := web-socket.start-receiving
       size := 0
       ba := #[]
       while ba.size < packet.size:
         ba += reader.read
-      expect_equals null reader.read
-      expect reader.is_text == (packet is string)
-      if reader.is_text:
-        expect_equals packet ba.to_string
+      expect-equals null reader.read
+      expect reader.is-text == (packet is string)
+      if reader.is-text:
+        expect-equals packet ba.to-string
       else:
-        expect_equals ba packet
+        expect-equals ba packet
     // Receive with a single call to `receive`.
     2.repeat:
-      round_trip_packet := web_socket.receive
-      expect_equals packet round_trip_packet
-  web_socket.close
+      round-trip-packet := web-socket.receive
+      expect-equals packet round-trip-packet
+  web-socket.close
 
-start_server network -> int:
-  server_socket := network.tcp_listen 0
-  port := server_socket.local_address.port
+start-server network -> int:
+  server-socket := network.tcp-listen 0
+  port := server-socket.local-address.port
   server := http.Server
   task --background::
-    server.listen server_socket:: | request/http.RequestIncoming response_writer/http.ResponseWriter |
+    server.listen server-socket:: | request/http.RequestIncoming response-writer/http.ResponseWriter |
       if request.path == "/":
-        web_socket := server.web_socket request response_writer
+        web-socket := server.web-socket request response-writer
         // For this test, the server end of the web socket just echoes back
         // what it gets.
-        while data := web_socket.receive:
-          sent_but_not_reflected--
-          web_socket.send data
+        while data := web-socket.receive:
+          sent-but-not-reflected--
+          web-socket.send data
         sleep --ms=10  // Give the client some time to count up before we check the result.
-        expect_equals 0 sent_but_not_reflected
-        web_socket.close
+        expect-equals 0 sent-but-not-reflected
+        web-socket.close
       else:
-        response_writer.write_headers http.STATUS_NOT_FOUND --message="Not Found"
+        response-writer.write-headers http.STATUS-NOT-FOUND --message="Not Found"
   return port
 
-unmark_bytes_test -> none:
+unmark-bytes-test -> none:
   mask := ByteArray 4: it * 17 + 2
   for offset := 0; offset < 4; offset++:
     for size := 98; size < 102; size++:
       data := ByteArray size: it
-      FragmentReader_.unmask_bytes_ data mask offset
+      FragmentReader_.unmask-bytes_ data mask offset
       data.size.repeat:
-        expect_equals data[it] (it ^ mask[(it + offset) & 3])
+        expect-equals data[it] (it ^ mask[(it + offset) & 3])

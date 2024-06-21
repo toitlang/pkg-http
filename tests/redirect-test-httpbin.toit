@@ -7,130 +7,130 @@ import http
 import net
 import encoding.json
 import encoding.url
-import certificate_roots
+import certificate-roots
 
 // For testing the HOST url might be rewritten to a localhost.
 HOST := "httpbin.org"
 PORT/int? := null
-HOST_PORT := PORT ? "$HOST:$PORT" : HOST
-PATH_GET ::= "/absolute-redirect/3"
+HOST-PORT := PORT ? "$HOST:$PORT" : HOST
+PATH-GET ::= "/absolute-redirect/3"
 
-PATH_POST     ::= "/redirect-to?url=$(url.encode "http://$HOST_PORT/post")&status_code=302"
-PATH_POST_TLS ::= "/redirect-to?url=$(url.encode "https://$HOST_PORT/post")&status_code=302"
-PATH_POST303  ::= "/redirect-to?url=$(url.encode "http://$HOST_PORT/get")&status_code=303"
+PATH-POST     ::= "/redirect-to?url=$(url.encode "http://$HOST-PORT/post")&status_code=302"
+PATH-POST-TLS ::= "/redirect-to?url=$(url.encode "https://$HOST-PORT/post")&status_code=302"
+PATH-POST303  ::= "/redirect-to?url=$(url.encode "http://$HOST-PORT/get")&status_code=303"
 
-check_get_response response/http.Response --scheme:
+check-get-response response/http.Response --scheme:
   data := #[]
   while chunk := response.body.read:
     data += chunk
-  expect_equals 200 response.status_code
+  expect-equals 200 response.status-code
   decoded := json.decode data
-  host_port := HOST
-  if PORT: host_port += ":$PORT"
-  expect_equals "$scheme://$host_port/get" decoded["url"]
+  host-port := HOST
+  if PORT: host-port += ":$PORT"
+  expect-equals "$scheme://$host-port/get" decoded["url"]
 
-test_get network/net.Interface --do_drain/bool=false:
-  print "Get$(do_drain ? " (manual drain)" : "")"
+test-get network/net.Interface --do-drain/bool=false:
+  print "Get$(do-drain ? " (manual drain)" : "")"
   client := http.Client network
 
-  response := client.get HOST --port=PORT PATH_GET
-  check_get_response response --scheme="http"
+  response := client.get HOST --port=PORT PATH-GET
+  check-get-response response --scheme="http"
 
-  response = client.get HOST --port=PORT PATH_GET --no-follow_redirects
-  expect_equals 302 response.status_code
-  if do_drain:
+  response = client.get HOST --port=PORT PATH-GET --no-follow-redirects
+  expect-equals 302 response.status-code
+  if do-drain:
     response.drain
   client.close
 
-test_post network/net.Interface --do_drain/bool=false:
-  print "Post$(do_drain ? " (manual drain)" : "")"
-  client := http.Client network --root_certificates=[certificate_roots.STARFIELD_CLASS_2_CA]
+test-post network/net.Interface --do-drain/bool=false:
+  print "Post$(do-drain ? " (manual drain)" : "")"
+  client := http.Client network --root-certificates=[certificate-roots.STARFIELD-CLASS-2-CA]
 
-  response := client.post --host=HOST --port=PORT --path=PATH_POST #['h', 'e', 'l', 'l', 'o']
+  response := client.post --host=HOST --port=PORT --path=PATH-POST #['h', 'e', 'l', 'l', 'o']
   data := #[]
   while chunk := response.body.read:
     data += chunk
-  expect_equals 200 response.status_code
+  expect-equals 200 response.status-code
   decoded := json.decode data
-  expect_equals "hello" decoded["data"]
+  expect-equals "hello" decoded["data"]
 
   if HOST == "httpbin.org":
     // Test that we can redirect from an HTTP to an HTTPS location.
-    response = client.post --host=HOST --port=PORT --path=PATH_POST_TLS #['h', 'e', 'l', 'l', 'o']
+    response = client.post --host=HOST --port=PORT --path=PATH-POST-TLS #['h', 'e', 'l', 'l', 'o']
     data = #[]
     while chunk := response.body.read:
       data += chunk
-    expect_equals 200 response.status_code
+    expect-equals 200 response.status-code
     decoded = json.decode data
-    expect_equals "hello" decoded["data"]
+    expect-equals "hello" decoded["data"]
 
   // Test that we see the redirect if we ask not to follow redirects.
-  response = client.post --host=HOST --port=PORT --path=PATH_POST #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
-  expect_equals 302 response.status_code
-  if do_drain:
+  response = client.post --host=HOST --port=PORT --path=PATH-POST #['h', 'e', 'l', 'l', 'o'] --no-follow-redirects
+  expect-equals 302 response.status-code
+  if do-drain:
     response.drain
 
-  response = client.post_json --host=HOST --port=PORT --path=PATH_POST "hello"
+  response = client.post-json --host=HOST --port=PORT --path=PATH-POST "hello"
   data = #[]
   while chunk := response.body.read:
     data += chunk
-  expect_equals 200 response.status_code
+  expect-equals 200 response.status-code
   decoded = json.decode data
-  expect_equals "hello" (json.decode decoded["data"].to_byte_array)
+  expect-equals "hello" (json.decode decoded["data"].to-byte-array)
 
-  response = client.post_json --host=HOST --port=PORT --path=PATH_POST "hello" --no-follow_redirects
-  expect_equals 302 response.status_code
-  if do_drain:
+  response = client.post-json --host=HOST --port=PORT --path=PATH-POST "hello" --no-follow-redirects
+  expect-equals 302 response.status-code
+  if do-drain:
     response.drain
 
-  response = client.post_form --host=HOST --port=PORT --path=PATH_POST { "toit": "hello" }
+  response = client.post-form --host=HOST --port=PORT --path=PATH-POST { "toit": "hello" }
   data = #[]
   while chunk := response.body.read:
     data += chunk
-  expect_equals 200 response.status_code
+  expect-equals 200 response.status-code
   decoded = json.decode data
-  expect_equals "hello" decoded["form"]["toit"]
+  expect-equals "hello" decoded["form"]["toit"]
 
-  response = client.post_form --host=HOST --port=PORT --path=PATH_POST { "toit": "hello" } --no-follow_redirects
-  expect_equals 302 response.status_code
-  if do_drain:
+  response = client.post-form --host=HOST --port=PORT --path=PATH-POST { "toit": "hello" } --no-follow-redirects
+  expect-equals 302 response.status-code
+  if do-drain:
     response.drain
 
   // A post to a redirect 303 should become a GET.
-  response = client.post --host=HOST --port=PORT --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o']
+  response = client.post --host=HOST --port=PORT --path=PATH-POST303 #['h', 'e', 'l', 'l', 'o']
   data = #[]
   while chunk := response.body.read:
     data += chunk
-  expect_equals 200 response.status_code
+  expect-equals 200 response.status-code
   decoded = json.decode data
-  expect decoded["args"].is_empty
+  expect decoded["args"].is-empty
 
-  response = client.post --host=HOST --port=PORT --path=PATH_POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow_redirects
-  expect_equals 303 response.status_code
-  if do_drain:
+  response = client.post --host=HOST --port=PORT --path=PATH-POST303 #['h', 'e', 'l', 'l', 'o'] --no-follow-redirects
+  expect-equals 303 response.status-code
+  if do-drain:
     response.drain
 
   client.close
 
 main args:
-  if not args.is_empty:
-    host_port/string := args[0]
-    if host_port.contains ":":
-      parts := host_port.split --at_first ":"
+  if not args.is-empty:
+    host-port/string := args[0]
+    if host-port.contains ":":
+      parts := host-port.split --at-first ":"
       HOST = parts[0]
       PORT = int.parse parts[1]
     else:
-      HOST = host_port
+      HOST = host-port
 
   if HOST == "httpbin.org":
     print "May timeout if httpbin is overloaded."
 
   network := net.open
 
-  test_get network
-  test_get network --do_drain
-  test_post network
-  test_post network --do_drain
+  test-get network
+  test-get network --do-drain
+  test-post network
+  test-post network --do-drain
 
   print "Closing network"
   network.close

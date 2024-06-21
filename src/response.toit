@@ -14,8 +14,8 @@ class Response:
   connection_/Connection
   headers ::= Headers
   version/string
-  status_code/int
-  status_message/string
+  status-code/int
+  status-message/string
 
   /**
   A reader that can be used to read the body of the response.
@@ -24,15 +24,15 @@ class Response:
   */
   body/io.Reader
 
-  constructor .connection_ .version .status_code .status_message .headers .body:
+  constructor .connection_ .version .status-code .status-message .headers .body:
 
   /**
   The length of the response body, if known.
   */
-  content_length -> int?:
+  content-length -> int?:
     return body.content-size
 
-  stringify: return "$status_code: $status_message"
+  stringify: return "$status-code: $status-message"
 
   // Return a reader & writer object, used to send raw data on the connection.
   detach -> tcp.Socket:

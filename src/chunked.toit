@@ -26,19 +26,19 @@ This is an adapter that converts a chunked stream (RFC 2616) to a stream of
 class ChunkedReader_ extends io.Reader:
   connection_/Connection? := null
   reader_/io.Reader? := ?
-  left_in_chunk_ := 0 // How much more raw data we are waiting for before the next size line.
+  left-in-chunk_ := 0 // How much more raw data we are waiting for before the next size line.
 
   constructor .connection_ .reader_:
 
   /**
   Returns the underlying reader, which may have buffered up data.
 
-  The ChunkedReader is unusable after a called to $detach_reader.
+  The ChunkedReader is unusable after a called to $detach-reader.
 
   Deprecated.
   */
   // TODO(florian): remove already now?
-  detach_reader -> io.Reader:
+  detach-reader -> io.Reader:
     r := reader_
     reader_ = null
     return r
@@ -47,29 +47,29 @@ class ChunkedReader_ extends io.Reader:
     while true:
       if not connection_:
         return null
-      if left_in_chunk_ > 0:
-        result := reader_.read --max_size=left_in_chunk_
-        if not result: throw io.Reader.UNEXPECTED_END_OF_READER
-        left_in_chunk_ -= result.size
-        if left_in_chunk_ == 0:
+      if left-in-chunk_ > 0:
+        result := reader_.read --max-size=left-in-chunk_
+        if not result: throw io.Reader.UNEXPECTED-END-OF-READER
+        left-in-chunk_ -= result.size
+        if left-in-chunk_ == 0:
           expect_ '\r'
           expect_ '\n'
         return result
 
-      raw_length := reader_.read_bytes_up_to '\r'
+      raw-length := reader_.read-bytes-up-to '\r'
       expect_ '\n'
 
-      left_in_chunk_ = int.parse raw_length --radix=16
+      left-in-chunk_ = int.parse raw-length --radix=16
 
       // End is indicated by a zero hex length.
-      if left_in_chunk_ == 0:
+      if left-in-chunk_ == 0:
         expect_ '\r'
         expect_ '\n'
-        connection_.reading_done_ this
+        connection_.reading-done_ this
         connection_ = null
 
   expect_ byte/int:
-    b := reader_.peek_byte 0
+    b := reader_.peek-byte 0
     if b != byte: throw "PROTOCOL_ERROR"
     reader_.skip 1
 
@@ -90,13 +90,13 @@ class ChunkedWriter_ extends io.CloseableWriter:
   constructor .connection_ .writer_:
 
   // We don't know the amount of data ahead of time, so it may already be done.
-  is_done_ -> bool:
+  is-done_ -> bool:
     return true
 
-  try_write_ data/io.Data from/int to/int -> int:
+  try-write_ data/io.Data from/int to/int -> int:
     size := to - from
     if size == 0: return 0
-    write_header_ size
+    write-header_ size
     writer_.write data from to  // Always writes all data.
     // Once we've sent the data, the other side might conclude that
     // they have gotten everything they need, so we don't want to throw
@@ -113,10 +113,10 @@ class ChunkedWriter_ extends io.CloseableWriter:
       writer_.write "0"
       writer_.write CRLF_
       writer_.write CRLF_
-    connection_.writing_done_ this
+    connection_.writing-done_ this
     connection_ = null
 
-  write_header_ length/int:
+  write-header_ length/int:
     writer_.write
       length.stringify 16
     writer_.write CRLF_
