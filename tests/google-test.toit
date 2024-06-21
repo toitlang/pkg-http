@@ -4,15 +4,14 @@
 
 import http
 import net
-import net.x509
 import certificate-roots
 
 main:
   network := net.open
   security-store := http.SecurityStoreInMemory
+  certificate-roots.install-common-trusted-roots
   client := http.Client.tls network
     --security-store=security-store
-    --root-certificates=[certificate-roots.GTS-ROOT-R1]
   response := client.get "script.google.com" "/"
   while data := response.body.read:
   response = client.get "www.google.com" "/"
