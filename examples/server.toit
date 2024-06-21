@@ -32,7 +32,7 @@ main:
         """
     else if resource == "/post-json" and request.method == http.POST:
       decoded := json.decode-stream request.body
-      print "Decoded: decoded"
+      print "Received JSON: decoded"
     else if resource == "/json":
       writer.headers.set "Content-Type" "application/json"
       writer.out.write
