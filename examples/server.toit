@@ -13,7 +13,7 @@ main:
   // Listen on a free port.
   tcp-socket := network.tcp-listen 0
   print "Server on http://localhost:$tcp-socket.local-address.port/"
-  server := http.Server
+  server := http.Server --max-tasks=5
   server.listen tcp-socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
     resource := request.query.resource
     if resource == "/empty":
