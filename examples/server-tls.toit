@@ -9,6 +9,13 @@ import net
 import net.tcp
 import tls
 
+/**
+An example of a simple HTTP server with TLS.
+
+The sdkconfig for the ESP32 must include server-side support for TLS.
+  Specifically, `CONFIG_MBEDTLS_TLS_CLIENT_ONLY` must not be set.
+*/
+
 ITEMS := ["FOO", "BAR", "BAZ"]
 
 main:
