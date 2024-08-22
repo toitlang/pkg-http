@@ -345,11 +345,11 @@ listen server server-socket my-port other-port:
       response-writer.headers.set "Content-Type" "text/plain"
       while data := request.body.read:
         writer.write data
-    else if request.query.resource == "/get_with_parameters":
+    else if resource == "/get_with_parameters":
       response-writer.headers.set "Content-Type" "text/plain"
       writer.write "Response with parameters"
       POST-DATA.do: | key/string value/string |
         expect-equals value request.query.parameters[key]
     else:
-      print "request.query.resource = '$request.query.resource'"
+      print "request.query.resource = '$resource'"
       response-writer.write-headers http.STATUS-NOT-FOUND --message="Not Found"

@@ -7,7 +7,7 @@ file(GLOB HTTPBIN_TESTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*-test-httpbin.toi
 
 set(TOIT_EXEC "toit.run${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "The executable used to run the tests")
 set(TPKG_EXEC "toit.pkg${CMAKE_EXECUTABLE_SUFFIX}" CACHE FILEPATH "The executable used to install the packages")
-set(TEST_TIMEOUT 40 CACHE STRING "The maximal amount of time each test is allowed to run")
+set(TEST_TIMEOUT 120 CACHE STRING "The maximal amount of time each test is allowed to run")
 set(ENABLE_HTTPBIN_TESTS ON CACHE BOOL "Whether to run tests that depend on httpbin.org docker")
 set(USE_HTTPBIN_DOCKER OFF CACHE BOOL "Whether to use the httpbin.org docker container")
 
@@ -41,16 +41,40 @@ include(fail.cmake OPTIONAL)
 message("Failing tests: ${FAILING_TESTS}")
 message("Skipped tests: ${SKIP_TESTS}")
 
+set(BROWSERS "chrome")
+if (APPLE)
+  # The macOS GitHub runner doesn't come with geckodriver anymore:
+  # https://github.com/actions/runner-images/issues/9974
+  # Since that browser is already tested on the other platforms, we skip it here.
+  list(APPEND BROWSERS "safari")
+elseif (WIN32)
+  list(APPEND BROWSERS "edge" "firefox")
+else()
+  list(APPEND BROWSERS "firefox")
+endif()
+
 foreach(file ${TESTS})
   set(test_name "/tests/${file}")
   if("${test_name}" IN_LIST SKIP_TESTS)
     continue()
   endif()
-  add_test(
-    NAME "${test_name}"
-    COMMAND "${TOIT_EXEC}" "-Xenable-asserts" "${file}"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  if ("${file}" MATCHES "webdriver-")
+    foreach (browser ${BROWSERS})
+      set(test_name "/tests/${file}-${browser}")
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${TOIT_EXEC}" "-Xenable-asserts" "${file}" "${browser}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      )
+      set_tests_properties("${test_name}" PROPERTIES TIMEOUT ${TEST_TIMEOUT})
+    endforeach()
+  else()
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${TOIT_EXEC}" "-Xenable-asserts" "${file}"
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
+  endif()
   set_tests_properties(${test_name} PROPERTIES TIMEOUT ${TEST_TIMEOUT})
 endforeach()
 
