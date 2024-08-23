@@ -1,10 +1,24 @@
-sdk: ^2.0.0-alpha.91
+sdk: ^2.0.0-alpha.144
 prefixes:
   certificate_roots: toit-cert-roots
+  fs: pkg-fs
+  host: pkg-host
   http: ..
 packages:
   ..:
     path: ..
+  pkg-fs:
+    url: github.com/toitlang/pkg-fs
+    name: fs
+    version: 2.3.1
+    hash: 60836d4500317af2093d59d50c117d612c33f1fa
+    prefixes:
+      host: pkg-host
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    name: host
+    version: 1.15.1
+    hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate_roots

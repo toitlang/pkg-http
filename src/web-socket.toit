@@ -302,6 +302,13 @@ class WebSocket:
   */
   static check-server-upgrade-request_ request/RequestIncoming response-writer/ResponseWriter -> string?:
     connection-header := request.headers.single "Connection"
+    // A connection header may have multiple tokens. Firefox, for example, sends
+    // "keep-alive, Upgrade".
+    connection-tokens := connection-header
+        ? (connection-header.split ",").map: it.trim
+        : []
+    has-upgrade-connection-token := connection-tokens.any: | token/string |
+      token.to-ascii-lower == "upgrade"
     upgrade-header := request.headers.single "Upgrade"
     version-header := request.headers.single "Sec-WebSocket-Version"
     nonce := request.headers.single "Sec-WebSocket-Key"
@@ -309,7 +316,7 @@ class WebSocket:
     if nonce == null:                                                  message = "No nonce"
     else if nonce.size != 24:                                          message = "Bad nonce size"
     else if not connection-header or not upgrade-header:               message = "No upgrade headers"
-    else if (Headers.ascii-normalize_ connection-header) != "Upgrade": message = "No Connection: Upgrade"
+    else if not has-upgrade-connection-token:                          message = "No Connection: Upgrade"
     else if (Headers.ascii-normalize_ upgrade-header) != "Websocket":  message = "No Upgrade: websocket"
     else if version-header != "13":                                    message = "Unrecognized Websocket version"
     else:
