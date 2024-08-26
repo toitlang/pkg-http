@@ -31,6 +31,7 @@ main args/List:
     print "*********************************************"
     print "IGNORING UNSUPPORTED BROWSER: $browser"
     print "*********************************************"
+    server-task.cancel
     return
 
   web-driver := WebDriver browser
