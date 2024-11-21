@@ -17,10 +17,10 @@ packages:
   pkg-host:
     url: github.com/toitlang/pkg-host
     name: host
-    version: 1.15.1
-    hash: ff187c2c19d695e66c3dc1d9c09b4dc6bec09088
+    version: 1.15.3
+    hash: 62393e8522b77eafbafe60b9817935266117daf6
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
-    name: certificate_roots
-    version: 1.6.1
-    hash: 55d3be82ed53d8d332338b2de931865cf69fe48b
+    name: certificate-roots
+    version: 1.7.0
+    hash: 0f824e1e2209d9833fa23635460d30661546af4f
