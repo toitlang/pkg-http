@@ -30,7 +30,7 @@ main:
   network := net.open
   // Listen on a free port.
   tcp-socket := network.tcp-listen 0
-  print "Server on http://localhost:$tcp-socket.local-address.port/"
+  print "Server on http://$network.address:$tcp-socket.local-address.port/"
   server := http.Server --max-tasks=5
   server.listen tcp-socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
     resource := request.query.resource
