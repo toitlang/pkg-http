@@ -22,6 +22,7 @@ An HTTP server.
 
 # Examples
 ```
+import encoding.json
 import http
 import net
 
