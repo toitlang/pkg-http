@@ -54,6 +54,7 @@ class WebDriver:
     url := "http://localhost:$port"
 
     MAX-ATTEMPTS := 20
+    sleep-time := 100
     for i := 0; i < MAX-ATTEMPTS; i++:
       exception := catch --unwind=(: i == MAX-ATTEMPTS - 1):
         response := client_.post-json --uri="$url/session" {
@@ -92,7 +93,8 @@ class WebDriver:
 
       if not exception: return
       // Probably hasn't started yet. Just try again.
-      sleep --ms=(100 * i)
+      sleep --ms=sleep-time
+      sleep-time *= 2
 
   close:
     pid := child-process_
