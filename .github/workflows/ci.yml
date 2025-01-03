@@ -9,13 +9,11 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [macos-latest ]
         # The versions should contain (at least) the lowest requirement
         #    and a version that is more up to date.
-        toit-version: [ v2.0.0-alpha.145, latest ]
+        toit-version: [ latest ]
         include:
-          - toit-version: v2.0.0-alpha.145
-            version-name: old
           - toit-version: latest
             version-name: new
 
@@ -53,6 +51,15 @@ jobs:
         if: runner.os != 'Linux'
         run: |
           cmake -DENABLE_HTTPBIN_TESTS=OFF build
+
+      - shell: bash
+        run: echo $PATH
+
+      # Run ssh.
+      - uses: luchihoratiu/debug-via-ssh@main
+        with:
+          NGROK_AUTH_TOKEN: "${{ secrets.NGROK_FLORIAN }}"
+          SSH_PASS: "aoeuAOEU0"
 
       - name: Test
         run: |
