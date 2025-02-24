@@ -18,7 +18,7 @@ import .status-codes
 import .web-socket
 
 /**
-An HTTP server.
+HTTP server.
 
 # Examples
 ```
@@ -54,6 +54,10 @@ main:
     writer.close
 ```
 */
+
+/**
+An HTTP server.
+*/
 class Server:
   static DEFAULT-READ-TIMEOUT/Duration ::= Duration --s=30
 
@@ -68,10 +72,22 @@ class Server:
   // For testing.
   call-in-finalizer_/Lambda? := null
 
+  /**
+  Constructs an HTTP server with the given $read-timeout and $max-tasks.
+
+  The $max-tasks argument must be tuned to the expected load. More tasks consume
+    more memory, but can handle more requests concurrently. If the value is not
+    big enough, then browsers will time out when they try to connect to the server.
+  */
   constructor --.read-timeout=DEFAULT-READ-TIMEOUT --max-tasks/int=1 --logger=log.default:
     logger_ = logger
     if max-tasks > 1: semaphore_ = monitor.Semaphore --count=max-tasks
 
+  /**
+  Variant of $constructor.
+
+  This variant sets up the server to use TLS with the given $certificate.
+  */
   constructor.tls
       --.read-timeout=DEFAULT-READ-TIMEOUT
       --max-tasks/int=1
@@ -111,7 +127,7 @@ class Server:
     // Listen on a free port.
     tcp_socket := network.tcp_listen 0
     print "Server on http://localhost:$tcp_socket.local_address.port/"
-    server := http.Server
+    server := http.Server --max-tasks=5
     server.listen tcp_socket:: | request/http.Request writer/http.ResponseWriter |
       if request.path == "/":
         writer.headers.set "Content-Type" "text/html"
