@@ -1,4 +1,4 @@
-sdk: ^2.0.0-alpha.144
+sdk: ^2.0.0-alpha.150
 prefixes:
   certificate_roots: toit-cert-roots
   fs: pkg-fs
@@ -22,5 +22,5 @@ packages:
   toit-cert-roots:
     url: github.com/toitware/toit-cert-roots
     name: certificate-roots
-    version: 1.7.0
-    hash: 0f824e1e2209d9833fa23635460d30661546af4f
+    version: 1.9.0
+    hash: 1445c4a6cae47689674ae02c5f1dc03660f1df8c
