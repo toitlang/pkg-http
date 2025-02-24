@@ -18,6 +18,63 @@ import .status-codes
 import .web-socket
 
 /**
+HTTP Client.
+
+# Get
+Use the $Client.get method to fetch data using a $GET request.
+
+The $Client.get method keeps track of the underlying resources and is thus
+  very easy to use.
+
+Example that takes the incoming data and reads it as JSON:
+```
+import http
+import net
+import encoding.json
+
+URI ::= "httpbin.org"
+PATH ::= "/get"
+
+main:
+  network := net.open
+  client/http.Client := null
+  try:
+    client = http.Client network
+    response := client.get URI PATH
+    data := json.decode_stream response.body
+  finally:
+    if client: client.close
+```
+
+For https connections either use the $Client.tls constructor or provide
+  a uri with the https scheme. You need to make sure that the server's
+  root certificate is installed or provided in the root-certificates list.
+  For public root certificates see the `certificate_roots` package.
+
+On embedded devices we recommend to provide a $SecurityStore if the server
+  supports TLS resume. See the tls-resume.toit example.
+
+```
+import certificate-roots
+import http
+import net
+
+URI ::= "https://www.example.com"
+
+main:
+  certificate-roots.install-common-trusted-roots
+  network := net.open
+  // On embedded devices consider providing a SecurityStore to speed up
+  // subsequent connections to the same server.
+  client := http.Client network
+  response := client.get --uri=URI
+  while data := response.body.read:
+    print data.to-string
+  client.close
+```
+*/
+
+/**
 An HTTP v1.1 client.
 
 This class provides methods to fetch data from HTTP servers.
@@ -35,50 +92,6 @@ The client caches connections to servers, so a second request to the same
   up TLS connections.  It also caches session state for TLS connections, so
   subsequent connections to a server will use the session state to speed up
   the TLS handshake from about 1000ms to about 150ms (on ESP32).
-
-# Get
-Use the $get method to fetch data using a $GET request.
-
-The $get method keeps track of the underlying resources and is thus
-  very easy to use.
-
-Example that takes the incoming data and reads it as JSON:
-```
-import http
-import net
-import encoding.json
-
-URI ::= "httpbin.org"
-PATH ::= "/get"
-
-main:
-  network := net.open
-  client := null
-  try:
-    client = http.Client network
-    response := client.get URI PATH
-    data := json.decode_stream response.body
-  finally:
-    if client: client.close
-```
-
-For https connection use the $Client.tls constructor with the certificate of
-  the server:
-```
-  client := http.Client.tls network
-      --root_certificates=[CERTIFICATE]
-```
-The certificate is server dependendent, and must be obtained before-hand.
-Most commonly one uses a combination of inspecting the certificate in Google Chrome,
-  and the package `certificate_roots`:
-  https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
-
-For example, the `httpbin.org` server uses the `AMAZON_ROOT_CA_1` certificate:
-```
-import certificate_roots
-
-CERTIFICATE ::= certificate_roots.AMAZON_ROOT_CA_1
-```
 */
 class Client:
   /**
@@ -96,39 +109,53 @@ class Client:
   security-store_/SecurityStore
 
   /**
-  Constructs a new client instance over the given interface.
+  Constructs a new client instance over the given $network.
+
+  Use `net.open` to obtain an $network.
+
+  Clients that connect to secure servers may provide a $security-store.  This
+    is used to store session state for TLS connections, which can speed up
+    the TLS handshake from about 1000ms to about 150ms (on ESP32). The
+    handshake then also uses less memory.
+
+  The $root-certificates parameter is nowadays mostly unused, as the
+    recommended way to provide root certificates is to `install` them
+    instead.
+
   The client will default to an insecure HTTP connection, but this can be
-    overridden by a redirect or a URI specifying a secure scheme.
-  Therefore it can be meaningful to provide certificate roots despite the
+    overridden by a redirect or a URI specifying a secure scheme. Therefore
+    it can be meaningful to provide certificate roots despite the
     insecure default.
-  If the client is used for secure connections, the $root-certificates must
-    contain the root certificate of the server.
+
+  If the client is used for secure connections, its root certificate must
+    be installed or provided in the $root-certificates list.
+
   A client will try to keep a connection open to the last server it
     contacted, in the hope that the next request will connect to the same
     server.  This can save a lot of CPU time for TLS connections which are
     expensive to set up, but it also reserves a fairly large amount of
     buffer memory for the TLS connection.  Call $close (perhaps in a finally
     clause) to release the connection.
+
   See the `certificate_roots` package for common roots:
     https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
-  Use `net.open` to obtain an interface.
   */
-  constructor .interface_
+  constructor network/tcp.Interface
       --root-certificates/List=[]
       --security-store/SecurityStore=SecurityStoreInMemory:
+    interface_ = network
     security-store_ = security-store
     root-certificates_ = root-certificates
     add-finalizer this:: this.finalize_
 
   /**
-  Constructs a new client.
-  The client will default to a secure HTTPS connection, but this can be
-    overridden by a redirect or a URI specifying an insecure scheme.
-  The $root-certificates must contain the root certificate of the server.
-  See the `certificate_roots` package for common roots:
-    https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
+  Variant of $constructor.
+
+  Constructs a client that defaults to a secure HTTPS connection.
+
   A client $certificate can be specified for the rare case where the client
     authenticates itself.
+
   The $server-name can be specified for verifying the TLS certificate.  This is
     for the rare case where we wish to verify the TLS connections with a
     different server name from the one used to establish the connection.
