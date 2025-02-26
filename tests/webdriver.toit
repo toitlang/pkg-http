@@ -55,8 +55,10 @@ class WebDriver:
 
     MAX-ATTEMPTS := 20
     sleep-time := 100
+    start-time := Time.now
     for i := 0; i < MAX-ATTEMPTS; i++:
       exception := catch --unwind=(: i == MAX-ATTEMPTS - 1):
+        print "Attempting to contact the driver."
         response := client_.post-json --uri="$url/session" {
           "capabilities": {
             "alwaysMatch": {:},
@@ -92,6 +94,8 @@ class WebDriver:
         session-url_ = "$url/session/$session-id"
 
       if not exception: return
+      if (Duration.since start-time).in-s > 10:
+        print "Failed to contact driver: $exception."
       // Probably hasn't started yet. Just try again.
       sleep --ms=sleep-time
       sleep-time *= 2
