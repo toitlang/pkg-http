@@ -94,7 +94,7 @@ class WebDriver:
         session-url_ = "$url/session/$session-id"
 
       if not exception: return
-      if (Duration.since start-time).in-s > 10:
+      if (Duration.since start-time).in-s >= 10:
         print "Failed to contact driver: $exception."
       // Probably hasn't started yet. Just try again.
       sleep --ms=sleep-time
