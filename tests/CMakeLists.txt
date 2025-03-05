@@ -67,6 +67,7 @@ foreach(file ${TESTS})
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       )
       set_tests_properties("${test_name}" PROPERTIES TIMEOUT ${TEST_TIMEOUT})
+      set_tests_properties("${test_name}" PROPERTIES RESOURCE_LOCK "webdriver")
     endforeach()
   else()
     add_test(
