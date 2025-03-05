@@ -146,9 +146,12 @@ get-text driver/WebDriver --id/string -> string:
   throw "Timeout waiting for element with id '$id'"
 
 expect-ok path/string driver/WebDriver -> none:
+  start-time := Time.now
   driver.goto "$URL/$path"
   for i := 0; i < 10; i++:
+    print "Waiting for status ($((Duration.since start-time).in-s)s..."
     text := get-text driver --id="status"
+    print "Status: $text"
     if text != "Pending":
       expect-equals "OK" text
       return
