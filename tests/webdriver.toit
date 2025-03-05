@@ -103,6 +103,7 @@ class WebDriver:
       // Probably hasn't started yet. Just try again.
       sleep --ms=sleep-time
       sleep-time *= 2
+    print "Started"
 
   close:
     pid := child-process_

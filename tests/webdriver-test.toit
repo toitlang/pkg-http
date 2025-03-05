@@ -16,6 +16,10 @@ import .webdriver
 main args/List:
   if args.is-empty: return
 
+  started := Time.now
+  time-log := :: | message/string |
+    print "$message: $(Duration.since started)"
+
   network := net.open
 
   browser := args.first
@@ -37,18 +41,31 @@ main args/List:
   web-driver := WebDriver browser
   web-driver.start
   try:
+    time-log.call "Testing status"
     test-status web-driver
+    print "Testing json"
     test-json web-driver
+    print "Testing json content-length"
     test-json-content-length web-driver
+    print "Testing 204 no content"
     test-204-no-content web-driver
+    print "Testing 500 because nothing written"
     test-500-because-nothing-written web-driver
+    print "Testing 500 because throw before headers"
     test-500-because-throw-before-headers web-driver
+    print "Testing hard close because wrote too little"
     test-hard-close-because-wrote-too-little web-driver
+    print "Testing hard close because throw after headers"
     test-hard-close-because-throw-after-headers web-driver
+    print "Testing post json"
     test-post-json web-driver
+    print "Testing post form"
     test-post-form web-driver
+    print "Testing get with parameters"
     test-get-with-parameters web-driver
+    print "Testing websocket"
     test-websocket web-driver
+    print "Testing done"
   finally:
     web-driver.close
     server-task.cancel
