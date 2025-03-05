@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import .client
+import .mime
 import .server
 import .request
 import .response

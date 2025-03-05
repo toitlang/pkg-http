@@ -48,6 +48,10 @@ main:
       decoded := json.decode-stream request.body
       print "Received JSON: $decoded"
     else:
+      // When serving other resources based on the path, have a
+      // look at `content-type --path=resource` to get the correct
+      // content type.
+      // Here we just return a 404.
       writer.headers.set "Content-Type" "text/plain"
       writer.write-headers 404
       writer.out.write "Not found\n"
