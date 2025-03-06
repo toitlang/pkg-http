@@ -12,10 +12,9 @@ PATH ::= "/nogood"
 CODE ::= 404
 
 main:
+  install-all-trusted-roots
   network := net.open
   client := http.Client.tls network
-
-  client.root-certificates_.add GTS-ROOT-R1
 
   response := client.get --host=HOST --path=PATH
 
