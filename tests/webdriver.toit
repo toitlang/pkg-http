@@ -58,7 +58,11 @@ class WebDriver:
     start-time := Time.now
     for i := 0; i < MAX-ATTEMPTS; i++:
       exception := catch --unwind=(: i == MAX-ATTEMPTS - 1):
-        print "Attempting to contact the driver."
+        print "Attempting ($i) to contact the driver. ($((Duration.since start-time).in_s))s"
+        with-timeout --ms=1_000:
+          response := client_.get --uri="$url/status"
+          if response.status-code != 200:
+            throw "Failed to contact driver: $response.status-code."
         response := client_.post-json --uri="$url/session" {
           "capabilities": {
             "alwaysMatch": {:},
@@ -99,6 +103,7 @@ class WebDriver:
       // Probably hasn't started yet. Just try again.
       sleep --ms=sleep-time
       sleep-time *= 2
+    print "Started"
 
   close:
     pid := child-process_
