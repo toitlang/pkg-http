@@ -102,8 +102,9 @@ class WebDriver:
     print "Started"
 
   close:
-    if not child-process_: return
-    pid := child-process_.pid
+    child-process := child-process_
+    if not child-process: return
+    pid := child-process.pid
     // Delete the session.
     // This doesn't shut down the driver, but is good practice.
     request := client_.new-request http.DELETE --uri=session-url_
@@ -113,7 +114,6 @@ class WebDriver:
     client_.get --uri="$session-url_/shutdown"
     client_.close
     network_.close
-    child-process := child-process_
     child-process_ = null
     if system.platform == system.PLATFORM-WINDOWS:
       // On Windows we only have kill 9.
