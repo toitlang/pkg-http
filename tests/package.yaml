@@ -1,12 +1,12 @@
 dependencies:
   certificate_roots:
     url: github.com/toitware/toit-cert-roots
-    version: ^1.9.0
+    version: ^1.10.0
   fs:
     url: github.com/toitlang/pkg-fs
     version: ^2.3.1
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.15.3
+    version: ^1.16.2
   http:
     path: ..

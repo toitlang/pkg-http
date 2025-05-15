@@ -19,7 +19,7 @@ DRIVERS_ ::= {
 
 class WebDriver:
   driver-app_/string
-  child-process_/any := null
+  child-process_/pipe.Process? := null
   session-url_/string? := null
   network_/net.Interface? := null
   client_/http.Client? := null
@@ -40,14 +40,10 @@ class WebDriver:
         "$program-dir/third-party/ephemeral-port-reserve/ephemeral_port_reserve.py"
     port = port.trim
     command := ["$driver-app_$extension", "--port=$port"]
-    fork-data := pipe.fork
-        true                // use_path
-        pipe.PIPE-INHERITED   // stdin.
-        pipe.PIPE-INHERITED   // stdout
-        pipe.PIPE-INHERITED   // stderr
+    child-process_ = pipe.fork
+        --use-path
         command.first
         command
-    child-process_ = fork-data[3]
     network_ = net.open
     client_ = http.Client network_
 
@@ -106,8 +102,9 @@ class WebDriver:
     print "Started"
 
   close:
-    pid := child-process_
-    if not pid: return
+    child-process := child-process_
+    if not child-process: return
+    pid := child-process.pid
     // Delete the session.
     // This doesn't shut down the driver, but is good practice.
     request := client_.new-request http.DELETE --uri=session-url_
@@ -125,7 +122,7 @@ class WebDriver:
       pipe.kill_ pid 15
     exception := catch --unwind=(: it != DEADLINE-EXCEEDED-ERROR):
       with-timeout --ms=3_000:
-        pipe.wait-for pid
+        child-process.wait
     if exception:
       pipe.kill_ pid 9
 
