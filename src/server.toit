@@ -71,7 +71,15 @@ class Server:
   use-tls_/bool ::= false
   certificate_/tls.Certificate? ::= null
   root-certificates_/List ::= []
-  semaphore_/monitor.Semaphore? ::= null
+  signal_/monitor.Signal ::= monitor.Signal
+  max-tasks_/int
+  task-count_/int := 0
+  handling-count_/int := 0
+  is-closed_/bool := false
+
+  // The server socket if it was created by the server and needs
+  // be closed when the server is closed.
+  server-socket_/tcp.ServerSocket? := null
 
   // For testing.
   call-in-finalizer_/Lambda? := null
@@ -85,7 +93,7 @@ class Server:
   */
   constructor --.read-timeout=DEFAULT-READ-TIMEOUT --max-tasks/int=1 --logger=log.default:
     logger_ = logger
-    if max-tasks > 1: semaphore_ = monitor.Semaphore --count=max-tasks
+    max-tasks_ = max-tasks
 
   /**
   Variant of $constructor.
@@ -102,7 +110,26 @@ class Server:
     use-tls_ = true
     certificate_ = certificate
     root-certificates_ = root-certificates
-    if max-tasks > 1: semaphore_ = monitor.Semaphore --count=max-tasks
+    max-tasks_ = max-tasks
+
+  /**
+  Closes the server.
+
+  If the server is in the process of handling requests, it will
+    finish the requests before returning from this method.
+  */
+  close -> none:
+    if is-closed_: return
+    is-closed_ = true
+    // Wait until all tasks are done.
+    signal_.wait: handling-count_ == 0
+    if server-socket_:
+      server-socket_.close
+      server-socket_ = null
+
+  /** Whether this server has been closed. */
+  is-closed -> bool:
+    return is-closed_
 
   /**
   Sets up an HTTP server on the given $network and port.
@@ -112,8 +139,8 @@ class Server:
     The $Request and a $ResponseWriter.
   */
   listen network/tcp.Interface port/int handler/Lambda -> none:
-    server-socket := network.tcp-listen port
-    listen server-socket handler
+    server-socket_ = network.tcp-listen port
+    listen server-socket_ handler
 
   /**
   Sets up an HTTP server on the given TCP server socket.
@@ -140,15 +167,17 @@ class Server:
   ```
   */
   listen server-socket/tcp.ServerSocket handler/Lambda -> none:
-    while true:
-      parent-task-semaphore := null
-      if semaphore_:
-        parent-task-semaphore = semaphore_
-        // Down the semaphore before the accept, so we just don't accept
-        // connections if we are at the limit.
-        semaphore_.down
-      try:  // A try to ensure the semaphore is upped.
-        accepted := server-socket.accept
+    while not is-closed_:
+      // Reserve the task we might start.
+      signal_.wait: task-count_ < max-tasks_
+      task-count_++
+      // Keep track of who needs to release the reserved task.
+      need-to-release-reserved-task := true
+      try:  // A try to ensure that we release the reserved task if necessary.
+        if is-closed_: break
+        accepted/tcp.Socket? := null
+        catch --unwind=(: not is-closed_):
+          accepted = server-socket.accept
         if not accepted: continue
 
         socket := accepted
@@ -175,18 +204,24 @@ class Server:
             else:
               close-logger.debug "connection ended"
           finally:
-            if semaphore_: semaphore_.up  // Up the semaphore when the task ends.
+            task-count_--
+            signal_.raise
         // End of code that can be run in the current task or in a child task.
 
-        parent-task-semaphore = null  // We got this far, the semaphore is ours.
-        if semaphore_:
+        if max-tasks_ > 1:
           task --background handle-connection-closure
         else:
           // For the single-task case, just run the connection in the current task.
           handle-connection-closure.call
+        // At this point the `handle-connection-closure` function is responsible
+        // for releasing the reserved task.
+        need-to-release-reserved-task = false
       finally:
-        // Up the semaphore if we threw before starting the task.
-        if parent-task-semaphore: parent-task-semaphore.up
+        // Release the reserved task if the code threw before we entered
+        // the `handle-connection-closure` function.
+        if need-to-release-reserved-task:
+          task-count_--
+          signal_.raise
 
   web-socket request/RequestIncoming response-writer/ResponseWriter -> WebSocket?:
     nonce := WebSocket.check-server-upgrade-request_ request response-writer
@@ -197,10 +232,11 @@ class Server:
   // Returns true if the connection was detached, false if it was closed.
   run-connection_ connection/Connection handler/Lambda logger/log.Logger -> bool:
     if call-in-finalizer_: connection.call-in-finalizer_ = call-in-finalizer_
-    while true:
+    while not is-closed_:
       request/RequestIncoming? := null
       with-timeout read-timeout:
         request = connection.read-request
+      if is-closed_: return false
       if not request: return false  // Client closed connection.
       request-logger := logger
       if request.method != "GET":
@@ -218,7 +254,12 @@ class Server:
         writer.write-headers STATUS-METHOD-NOT-ALLOWED --message="HEAD not implemented"
       else:
         catch --trace --unwind=unwind-block:
-          handler.call request writer  // Calls the block passed to listen.
+          handling-count_++
+          try:
+            handler.call request writer  // Calls the block passed to listen.
+          finally:
+            handling-count_--
+            signal_.raise
       if writer.detached_: return true
       if request.body.read:
         // The request (eg. a POST request) was not fully read - should have
@@ -227,6 +268,7 @@ class Server:
         assert: closed
         throw "request not fully read: $request.path"
       writer.close
+    return false
 
 class ResponseWriter extends Object with io.OutMixin:
   static VERSION ::= "HTTP/1.1"
