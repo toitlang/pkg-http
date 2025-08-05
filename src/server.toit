@@ -120,6 +120,8 @@ class Server:
   */
   close -> none:
     if is-closed_: return
+    // Mark this server as closed. We won't accept any new connections anymore, but
+    // still handle existing connections.
     is-closed_ = true
     // Wait until all tasks are done.
     signal_.wait: handling-count_ == 0
@@ -172,7 +174,7 @@ class Server:
       signal_.wait: task-count_ < max-tasks_
       task-count_++
       // Keep track of who needs to release the reserved task.
-      need-to-release-reserved-task := true
+      must-release-reserved-task := true
       try:  // A try to ensure that we release the reserved task if necessary.
         if is-closed_: break
         accepted/tcp.Socket? := null
@@ -194,6 +196,8 @@ class Server:
         // This code can be run in the current task or in a child task.
         handle-connection-closure := ::
           try:  // A try to ensure the semaphore is upped in the child task.
+            // This closure is going to decrement the task-counter.
+            must-release-reserved-task = false
             detached := false
             e := catch --trace=(: not is-close-exception_ it and it != DEADLINE-EXCEEDED-ERROR):
               detached = run-connection_ connection handler logger
@@ -213,13 +217,10 @@ class Server:
         else:
           // For the single-task case, just run the connection in the current task.
           handle-connection-closure.call
-        // At this point the `handle-connection-closure` function is responsible
-        // for releasing the reserved task.
-        need-to-release-reserved-task = false
       finally:
         // Release the reserved task if the code threw before we entered
         // the `handle-connection-closure` function.
-        if need-to-release-reserved-task:
+        if must-release-reserved-task:
           task-count_--
           signal_.raise
 
