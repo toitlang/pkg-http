@@ -710,15 +710,11 @@ class Client:
       if location.can-reuse-connection connection_.location_:
         connection_.drain_  // Remove any remnants of previous requests.
         // The 'drain' may have closed the connection. Check again.
-        if connection_:
-          if connection_.is-open_:
-            return true
-          else:
-            connection_ = null
+        if connection_ and connection_.is-open_: return true
       else:
         // Hostname etc. didn't match so we need a new connection.
         connection_.close
-        connection_ = null
+    connection_ = null
     socket/tcp.Socket := interface_.tcp-connect location.host location.port
     if location.use-tls:
       // Wrap the socket in TLS.
