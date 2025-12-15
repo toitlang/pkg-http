@@ -117,6 +117,5 @@ class ChunkedWriter_ extends io.CloseableWriter:
     connection_ = null
 
   write-header_ length/int:
-    writer_.write
-      length.stringify 16
+    writer_.write (length.to-string --radix=16)
     writer_.write CRLF_
