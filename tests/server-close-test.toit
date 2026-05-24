@@ -18,14 +18,14 @@ test --request-more/bool=false:
   network := net.open
   tcp-socket := network.tcp-listen 0
   port := tcp-socket.local-address.port
-  in-tenth-handler := monitor.Latch
-  ten-done := monitor.Latch
+  close-trigger := monitor.Latch
+  requests-done := monitor.Latch
   client-done := monitor.Latch
   task::
     requests := 0
     server.listen tcp-socket:: | request/http.Request writer/http.ResponseWriter |
       requests++
-      if requests == CLOSE-AFTER-REQUESTS: in-tenth-handler.set true
+      if requests == CLOSE-AFTER-REQUESTS: close-trigger.set true
       sleep --ms=100  // Stretch the handler so server.close has to wait.
       if request.path == "/":
         writer.headers.set "Content-Type" "text/html"
@@ -37,7 +37,7 @@ test --request-more/bool=false:
     // 10 requests should be no problem.
     CLOSE-AFTER-REQUESTS.repeat:
       client.get --uri="http://localhost:$port/"
-    ten-done.set true
+    requests-done.set true
 
     if request-more:
       // There might still be some requests that made it through, but
@@ -50,15 +50,15 @@ test --request-more/bool=false:
       expect-not-null e
     client-done.set true
 
-  // Trigger close while the 10th handler is still in flight, so we verify
+  // Trigger close while the last handler is still in flight, so we verify
   // that server.close waits for in-flight handlers to complete.
-  in-tenth-handler.get
+  close-trigger.get
   server.close
   // server.close has returned, so all handlers are done. But the client
   // may still be reading the last response. Wait for the client to
   // confirm receipt before tearing down the listening socket, otherwise
   // a mid-stream close on Windows can show up as RST and trigger a retry
   // that hits the closed listener with "actively refused".
-  ten-done.get
+  requests-done.get
   tcp-socket.close
   client-done.get
