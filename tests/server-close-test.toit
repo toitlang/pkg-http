@@ -18,14 +18,15 @@ test --request-more/bool=false:
   network := net.open
   tcp-socket := network.tcp-listen 0
   port := tcp-socket.local-address.port
-  served-ten := monitor.Latch
-  closed := monitor.Latch
+  close-trigger := monitor.Latch
+  requests-done := monitor.Latch
+  client-done := monitor.Latch
   task::
     requests := 0
     server.listen tcp-socket:: | request/http.Request writer/http.ResponseWriter |
       requests++
-      if requests == 10: served-ten.set true
-      sleep --ms=100  // Make it more likely to have parallel requests.
+      if requests == CLOSE-AFTER-REQUESTS: close-trigger.set true
+      sleep --ms=100  // Stretch the handler so server.close has to wait.
       if request.path == "/":
         writer.headers.set "Content-Type" "text/html"
         writer.out.write "<html><body>hello world</body></html>"
@@ -36,17 +37,28 @@ test --request-more/bool=false:
     // 10 requests should be no problem.
     CLOSE-AFTER-REQUESTS.repeat:
       client.get --uri="http://localhost:$port/"
+    requests-done.set true
 
     if request-more:
       // There might still be some requests that made it through, but
       // now we should soon have issues.
       e := catch:
-        with-timeout --ms=1000:
+        with-timeout --ms=2000:
           while true:
             client.get --uri="http://localhost:$port/"
             sleep --ms=10
       expect-not-null e
+    client-done.set true
 
-  served-ten.get
+  // Trigger close while the last handler is still in flight, so we verify
+  // that server.close waits for in-flight handlers to complete.
+  close-trigger.get
   server.close
+  // server.close has returned, so all handlers are done. But the client
+  // may still be reading the last response. Wait for the client to
+  // confirm receipt before tearing down the listening socket, otherwise
+  // a mid-stream close on Windows can show up as RST and trigger a retry
+  // that hits the closed listener with "actively refused".
+  requests-done.get
   tcp-socket.close
+  client-done.get
