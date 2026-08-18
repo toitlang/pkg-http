@@ -196,8 +196,6 @@ class Server:
         // This code can be run in the current task or in a child task.
         handle-connection-closure := ::
           try:  // A try to ensure the semaphore is upped in the child task.
-            // This closure is going to decrement the task-counter.
-            must-release-reserved-task = false
             detached := false
             e := catch --trace=(: not is-close-exception_ it and it != DEADLINE-EXCEEDED-ERROR):
               detached = run-connection_ connection handler logger
@@ -212,10 +210,14 @@ class Server:
             signal_.raise
         // End of code that can be run in the current task or in a child task.
 
+        // The closure releases the reserved task, so we must not do it here.
+        // Only clear the flag once we know the closure will run.
         if max-tasks_ > 1:
           task --background handle-connection-closure
+          must-release-reserved-task = false
         else:
           // For the single-task case, just run the connection in the current task.
+          must-release-reserved-task = false
           handle-connection-closure.call
       finally:
         // Release the reserved task if the code threw before we entered
