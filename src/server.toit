@@ -182,14 +182,24 @@ class Server:
           accepted = server-socket.accept
         if not accepted: continue
 
-        socket := accepted
+        socket/tcp.Socket := accepted
+        address/net.SocketAddress? := null
+        // The peer may reset the connection between the accept and the first
+        // read (connect scans, aborted clients, ...), in which case
+        // `peer-address` throws on host.
+        peer-address-error := catch:
+          address = socket.peer-address
+        if peer-address-error:
+          logger_.debug "client connection setup failed" --tags={"reason": peer-address-error}
+          catch: socket.close
+          continue
+
         if use-tls_:
           socket = tls.Socket.server socket
             --certificate=certificate_
             --root-certificates=root-certificates_
 
         connection := Connection --location=null socket
-        address := socket.peer-address
         logger := logger_.with-tag "peer" address
         logger.debug "client connected"
 
