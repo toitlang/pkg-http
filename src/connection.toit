@@ -146,13 +146,22 @@ class Connection:
     if has-body: current-writer_ = body-writer
     socket_.no-delay = false
 
-    writer.write status
-    headers.write-to writer
-    if is-client-request and host_:
-      writer.write "Host: $host_\r\n"
-    if needs-to-write-chunked-header:
-      writer.write "Transfer-Encoding: chunked\r\n"
-    writer.write "\r\n"
+    headers-written := false
+    try:
+      writer.write status
+      headers.write-to writer
+      if is-client-request and host_:
+        writer.write "Host: $host_\r\n"
+      if needs-to-write-chunked-header:
+        writer.write "Transfer-Encoding: chunked\r\n"
+      writer.write "\r\n"
+      headers-written = true
+    finally:
+      // If we failed to write the headers the connection is unusable: the
+      // peer may have received a partial header. Close it, which also
+      // resets $current-writer_ so that later attempts to respond don't
+      // fail with "Previous request not completed".
+      if not headers-written: close
 
     socket_.no-delay = true
     return body-writer

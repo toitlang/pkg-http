@@ -351,6 +351,10 @@ class ResponseWriter extends Object with io.OutMixin:
   // Returns true if the connection was closed due to an error.
   close-on-exception_ message/string -> bool:
     logger_.info message
+    if not connection_.is-open_:
+      // The connection already died (typically the peer went away while
+      // we were writing the headers). Nothing more we can do.
+      return true
     if body-writer_:
       // We already sent a good response code, but then something went
       // wrong.  Hard close (RST) the connection to signal to the other end
@@ -375,6 +379,10 @@ class ResponseWriter extends Object with io.OutMixin:
   */
   close -> none:
     mark-writer-closed_
+    if not connection_.is-open_:
+      // The connection already died (typically the peer went away while
+      // we were writing the headers). Nothing more we can do.
+      return
     if body-writer_:
       too-little := content-length_ ? (body-writer_.processed < content-length_) : false
       body-writer_.close
