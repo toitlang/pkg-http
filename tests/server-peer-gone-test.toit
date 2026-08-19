@@ -49,10 +49,12 @@ main:
         print "---------------------------------------"
         recorder.traces.clear
         test --max-tasks=max-tasks --scenario=scenario
-        traces_seen := recorder.traces.size
-        allowed := scenario == PROPAGATE ? 1 : 0
-        if traces_seen != allowed:
-          failures.add "$scenario/max-tasks=$max-tasks ($traces_seen != $allowed)"
+        traces-seen := recorder.traces.size
+        // The OS may report the disconnect during the response write or when
+        // the server next reads from the connection.
+        maximum := scenario == PROPAGATE ? 1 : 0
+        if traces-seen > maximum:
+          failures.add "$scenario/max-tasks=$max-tasks ($traces-seen > $maximum)"
   finally:
     recorder.uninstall
   expect failures.is-empty --message="$failures"
@@ -63,12 +65,14 @@ test --max-tasks/int --scenario/string:
   port := listen-socket.local-address.port
   server := http.Server --max-tasks=max-tasks
   client-closed := monitor.Latch
+  request-received := monitor.Latch
   slow-handled := monitor.Latch
   done := monitor.Latch
 
   task::
     server.listen listen-socket:: | request/http.Request writer/http.ResponseWriter |
       if request.path == "/slow":
+        request-received.set true
         try:
           client-closed.get  // Peer is gone by now.
           if scenario == PROPAGATE:
@@ -86,6 +90,7 @@ test --max-tasks/int --scenario/string:
 
   socket := network.tcp-connect "localhost" port
   socket.out.write "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n"
+  with-timeout --ms=5000: request-received.get
   socket.close  // FIN before the response is written.
   client-closed.set true
   slow-handled.get
