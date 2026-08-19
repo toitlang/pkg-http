@@ -49,10 +49,12 @@ main:
         print "---------------------------------------"
         recorder.traces.clear
         test --max-tasks=max-tasks --scenario=scenario
-        traces_seen := recorder.traces.size
-        allowed := scenario == PROPAGATE ? 1 : 0
-        if traces_seen != allowed:
-          failures.add "$scenario/max-tasks=$max-tasks ($traces_seen != $allowed)"
+        traces-seen := recorder.traces.size
+        // The OS may report the disconnect during the response write or when
+        // the server next reads from the connection.
+        maximum := scenario == PROPAGATE ? 1 : 0
+        if traces-seen > maximum:
+          failures.add "$scenario/max-tasks=$max-tasks ($traces-seen > $maximum)"
   finally:
     recorder.uninstall
   expect failures.is-empty --message="$failures"
