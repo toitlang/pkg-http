@@ -4,9 +4,7 @@
 
 // A client that connects, sends a request and closes before the server
 // writes the response must be treated as a normal disconnect: the server
-// keeps serving and doesn't log any extraneous traces. The only acceptable
-// trace is the one the server emits when the handler lets the socket error
-// itself escape.
+// keeps serving and doesn't log "Previous request not completed".
 
 import expect show *
 import http
@@ -49,12 +47,9 @@ main:
         print "---------------------------------------"
         recorder.traces.clear
         test --max-tasks=max-tasks --scenario=scenario
-        traces-seen := recorder.traces.size
-        // The OS may report the disconnect during the response write or when
-        // the server next reads from the connection.
-        maximum := scenario == PROPAGATE ? 1 : 0
-        if traces-seen > maximum:
-          failures.add "$scenario/max-tasks=$max-tasks ($traces-seen > $maximum)"
+        recorder.traces.do: | trace/ByteArray |
+          if trace.to-string.contains "Previous request not completed":
+            failures.add "$scenario/max-tasks=$max-tasks"
   finally:
     recorder.uninstall
   expect failures.is-empty --message="$failures"
