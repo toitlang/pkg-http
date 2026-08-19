@@ -65,12 +65,14 @@ test --max-tasks/int --scenario/string:
   port := listen-socket.local-address.port
   server := http.Server --max-tasks=max-tasks
   client-closed := monitor.Latch
+  request-received := monitor.Latch
   slow-handled := monitor.Latch
   done := monitor.Latch
 
   task::
     server.listen listen-socket:: | request/http.Request writer/http.ResponseWriter |
       if request.path == "/slow":
+        request-received.set true
         try:
           client-closed.get  // Peer is gone by now.
           if scenario == PROPAGATE:
@@ -88,6 +90,7 @@ test --max-tasks/int --scenario/string:
 
   socket := network.tcp-connect "localhost" port
   socket.out.write "GET /slow HTTP/1.1\r\nHost: localhost\r\n\r\n"
+  with-timeout --ms=5000: request-received.get
   socket.close  // FIN before the response is written.
   client-closed.set true
   slow-handled.get
