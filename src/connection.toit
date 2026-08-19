@@ -154,7 +154,6 @@ class Connection:
         writer.write "Host: $host_\r\n"
       if needs-to-write-chunked-header:
         writer.write "Transfer-Encoding: chunked\r\n"
-      socket_.no-delay = true
       writer.write "\r\n"
       headers-written = true
     finally:
@@ -162,7 +161,15 @@ class Connection:
       // peer may have received a partial header. Close it, which also
       // resets $current-writer_ so that later attempts to respond don't
       // fail with "Previous request not completed".
-      if not headers-written: close
+      if not headers-written:
+        close
+      else:
+        no-delay-restored := false
+        try:
+          socket_.no-delay = true
+          no-delay-restored = true
+        finally:
+          if not no-delay-restored: close
 
     return body-writer
 
