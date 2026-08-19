@@ -146,6 +146,7 @@ class Connection:
     if has-body: current-writer_ = body-writer
 
     headers-written := false
+    no-delay-restored := false
     try:
       socket_.no-delay = false
       writer.write status
@@ -157,23 +158,18 @@ class Connection:
       writer.write "\r\n"
       headers-written = true
     finally:
-      // If we failed to write the headers the connection is unusable: the
-      // peer may have received a partial header. Close it, which also
-      // resets $current-writer_ so that later attempts to respond don't
-      // fail with "Previous request not completed".
-      if not headers-written:
-        close
-      else:
-        // Only restore TCP_NODELAY after all headers were written. Its setter
-        // can itself throw (for example if the peer has gone away), so guard
-        // it separately: closing resets $current-writer_, while the setter's
-        // original exception keeps propagating.
-        no-delay-restored := false
-        try:
+      // The TCP_NODELAY setter can throw if the peer has gone away. The nested
+      // finally ensures that we still close while its exception propagates.
+      try:
+        if headers-written:
           socket_.no-delay = true
           no-delay-restored = true
-        finally:
-          if not no-delay-restored: close
+      finally:
+        // A partial header or a failed TCP_NODELAY restoration makes the
+        // connection unusable. Closing also resets $current-writer_.
+        if not headers-written or
+            not no-delay-restored:
+          close
 
     return body-writer
 
