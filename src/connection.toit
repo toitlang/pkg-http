@@ -164,6 +164,10 @@ class Connection:
       if not headers-written:
         close
       else:
+        // Only restore TCP_NODELAY after all headers were written. Its setter
+        // can itself throw (for example if the peer has gone away), so guard
+        // it separately: closing resets $current-writer_, while the setter's
+        // original exception keeps propagating.
         no-delay-restored := false
         try:
           socket_.no-delay = true
