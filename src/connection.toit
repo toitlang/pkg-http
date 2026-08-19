@@ -144,16 +144,17 @@ class Connection:
     // Set this before doing blocking operations on the socket, so that we
     // don't let another task start another request on the same connection.
     if has-body: current-writer_ = body-writer
-    socket_.no-delay = false
 
     headers-written := false
     try:
+      socket_.no-delay = false
       writer.write status
       headers.write-to writer
       if is-client-request and host_:
         writer.write "Host: $host_\r\n"
       if needs-to-write-chunked-header:
         writer.write "Transfer-Encoding: chunked\r\n"
+      socket_.no-delay = true
       writer.write "\r\n"
       headers-written = true
     finally:
@@ -163,7 +164,6 @@ class Connection:
       // fail with "Previous request not completed".
       if not headers-written: close
 
-    socket_.no-delay = true
     return body-writer
 
   // Gets the next request from the client. If the client closes the
