@@ -548,6 +548,9 @@ class Client:
 
   If $follow-redirects is true, follows redirects (when the status code is 3xx).
 
+  To avoid replaying a non-idempotent request, this method does not retry if a
+    cached connection was closed by the server.
+
   The $use-tls argument can be used to override the default TLS usage of the
     client.
 
@@ -614,7 +617,7 @@ class Client:
 
     MAX-REDIRECTS.repeat:
       response := null
-      try-to-reuse_ parsed: | connection |
+      try-to-reuse_ parsed --no-retry-on-connection-close: | connection |
         request := connection.new-request POST parsed.path headers
         request.body = io.Reader data
         response = request.send
@@ -666,6 +669,9 @@ class Client:
     version of this library.  See $(post-json object --uri).
 
   If $follow-redirects is true, follows redirects (when the status code is 3xx).
+
+  To avoid replaying a non-idempotent request, this method does not retry if a
+    cached connection was closed by the server.
   */
   post-json object/any -> Response
       --host/string
@@ -717,6 +723,9 @@ class Client:
     version of this library.  See $(post-form map --uri).
 
   If $follow-redirects is true, follows redirects (when the status code is 3xx).
+
+  To avoid replaying a non-idempotent request, this method does not retry if a
+    cached connection was closed by the server.
   */
   post-form map/Map -> Response
       --host/string

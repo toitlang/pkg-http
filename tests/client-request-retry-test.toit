@@ -77,6 +77,35 @@ main:
     warm-up client port
     wait-until-server-closes-idle-connection
 
+    exception = catch:
+      client.post POST-DATA
+          --uri="http://localhost:$port/upload?kind=post"
+          --headers=headers
+          --content-type="application/octet-stream"
+    expect-not-null exception
+
+    warm-up client port
+    wait-until-server-closes-idle-connection
+
+    exception = catch:
+      client.post-json {"value": 1}
+          --uri="http://localhost:$port/upload?kind=post"
+          --headers=headers
+    expect-not-null exception
+
+    warm-up client port
+    wait-until-server-closes-idle-connection
+
+    exception = catch:
+      client.post-form {"value": "1"}
+          --uri="http://localhost:$port/upload?kind=post"
+          --headers=headers
+    expect-not-null exception
+    expect-equals [http.PUT] received-methods
+
+    warm-up client port
+    wait-until-server-closes-idle-connection
+
     response = client.request http.POST POST-DATA
         --uri="http://localhost:$port/upload?kind=post"
         --headers=headers
