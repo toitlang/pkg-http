@@ -7,9 +7,6 @@ import http
 import monitor
 import net
 
-READ-TIMEOUT ::= Duration --ms=20
-WAIT-FOR-CLOSE ::= Duration --ms=200
-
 PUT-DATA ::= "put payload".to-byte-array
 POST-DATA ::= "post payload".to-byte-array
 
@@ -17,8 +14,9 @@ main:
   network := net.open
   server-socket := network.tcp-listen 0
   port := server-socket.local-address.port
-  server := http.Server --read-timeout=READ-TIMEOUT
+  server := http.Server
   server-done := monitor.Latch
+  server-closed := monitor.Semaphore
   received-methods := []
 
   task::
@@ -26,6 +24,10 @@ main:
       server.listen server-socket:: | request/http.RequestIncoming writer/http.ResponseWriter |
         if request.path == "/warm-up":
           writer.out.write "ready"
+          writer.close
+          socket := writer.detach
+          socket.close
+          server-closed.up
         else:
           expect-equals "/upload" request.query.resource
           expect-equals "yes" (request.headers.single "X-Test")
@@ -48,8 +50,7 @@ main:
   headers := http.Headers
   headers.set "X-Test" "yes"
   try:
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     response := client.request http.PUT PUT-DATA
         --host="localhost"
@@ -61,8 +62,7 @@ main:
     expect-equals 200 response.status-code
     expect-equals PUT-DATA response.body.read-all
 
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     // POST isn't idempotent by definition, so it isn't retried without an
     // explicit opt-in.
@@ -74,8 +74,7 @@ main:
     expect-not-null exception
     expect-equals [http.PUT] received-methods
 
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     exception = catch:
       client.post POST-DATA
@@ -84,8 +83,7 @@ main:
           --content-type="application/octet-stream"
     expect-not-null exception
 
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     exception = catch:
       client.post-json {"value": 1}
@@ -93,8 +91,7 @@ main:
           --headers=headers
     expect-not-null exception
 
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     exception = catch:
       client.post-form {"value": "1"}
@@ -103,8 +100,7 @@ main:
     expect-not-null exception
     expect-equals [http.PUT] received-methods
 
-    warm-up client port
-    wait-until-server-closes-idle-connection
+    warm-up client port server-closed
 
     response = client.request http.POST POST-DATA
         --uri="http://localhost:$port/upload?kind=post"
@@ -122,12 +118,8 @@ main:
     server-done.get
     network.close
 
-warm-up client/http.Client port/int:
+warm-up client/http.Client port/int server-closed/monitor.Semaphore:
   response := client.get --host="localhost" --port=port --path="/warm-up"
   expect-equals 200 response.status-code
   expect-equals "ready" response.body.read-all.to-string
-
-wait-until-server-closes-idle-connection:
-  // Leave enough margin that the server has closed its side of the cached
-  // connection before the client attempts to reuse it.
-  sleep WAIT-FOR-CLOSE
+  server-closed.down
