@@ -173,6 +173,96 @@ class Client:
     add-finalizer this:: this.finalize_
 
   /**
+  Sends an HTTP request with an optional byte-array body.
+
+  The request is retried on a new connection if a cached connection was
+    closed by the server. GET, HEAD, PUT, DELETE, OPTIONS, and TRACE are
+    retried by default. Other methods are only retried if
+    $retry-on-connection-close is true.
+
+  Since the body is a byte array, it can be replayed safely when reconnecting.
+    Use $new-request for streaming bodies that cannot be replayed.
+
+  This method returns redirect responses without following them.
+  */
+  request method/string data/ByteArray?=null -> Response
+      --uri/string
+      --headers/Headers?=null
+      --content-type/string?=null
+      --retry-on-connection-close/bool?=null:
+    parsed := parse_ uri --web-socket=false
+    retry := retry-on-connection-close == null
+        ? is-idempotent-method_ method
+        : retry-on-connection-close
+    return request_ method data parsed
+        --headers=headers
+        --content-type=content-type
+        --retry-on-connection-close=retry
+
+  /**
+  Sends an HTTP request with an optional byte-array body.
+
+  The request is retried on a new connection if a cached connection was
+    closed by the server. GET, HEAD, PUT, DELETE, OPTIONS, and TRACE are
+    retried by default. Other methods are only retried if
+    $retry-on-connection-close is true.
+
+  Since the body is a byte array, it can be replayed safely when reconnecting.
+    Use $new-request for streaming bodies that cannot be replayed.
+
+  The $query-parameters are encoded into the request path.
+
+  This method returns redirect responses without following them.
+  */
+  request method/string data/ByteArray?=null -> Response
+      --host/string
+      --port/int?=null
+      --path/string="/"
+      --query-parameters/Map?=null
+      --headers/Headers?=null
+      --content-type/string?=null
+      --retry-on-connection-close/bool?=null
+      --use-tls/bool?=null:
+    parsed := parse_ host port path query-parameters use-tls --web-socket=false
+    retry := retry-on-connection-close == null
+        ? is-idempotent-method_ method
+        : retry-on-connection-close
+    return request_ method data parsed
+        --headers=headers
+        --content-type=content-type
+        --retry-on-connection-close=retry
+
+  request_ method/string data/ByteArray? parsed/ParsedUri_ -> Response
+      --headers/Headers?
+      --content-type/string?
+      --retry-on-connection-close/bool:
+    headers = headers ? headers.copy : Headers
+    if headers.single "Transfer-Encoding": throw "INVALID_ARGUMENT"
+    if headers.single "Host": throw "INVALID_ARGUMENT"
+    if content-type:
+      existing := headers.single "Content-Type"
+      if existing and existing.to-ascii-lower != content-type.to-ascii-lower:
+        throw "INVALID_ARGUMENT"
+      headers.set "Content-Type" content-type
+
+    response/Response? := null
+    try-to-reuse_ parsed
+        --retry-on-connection-close=retry-on-connection-close:
+      | connection/Connection |
+      outgoing := connection.new-request method parsed.path headers
+      if data: outgoing.body = io.Reader data
+      response = outgoing.send
+    return response
+
+  is-idempotent-method_ method/string -> bool:
+    return method == GET
+        or method == HEAD
+        or method == PUT
+        or method == DELETE
+        or method == OPTIONS
+        or method == TRACE
+
+  /**
   Variant of $(new-request method --host).
 
   Instead of specifying host and path, this variant lets you specify a $uri, of
@@ -203,6 +293,10 @@ class Client:
   Do not use $query-parameters for a $POST request.  See instead $post-form,
     which encodes the key-value pairs in the body as expected for a POST
     request.
+
+  Since the body can be an arbitrary reader, $RequestOutgoing.send cannot
+    replay it after a cached connection has been closed. Use $request for
+    byte-array bodies that should be retried safely.
   */
   new-request method/string -> RequestOutgoing
       --host/string
@@ -460,7 +554,8 @@ class Client:
   # Advanced
   If the data can be generated dynamically, it's more efficient to create a new
     request with $new-request and to set the $RequestOutgoing.body to a reader
-    that produces the data only when needed.
+    that produces the data only when needed. Such a streaming request cannot be
+    retried automatically if the connection closes while sending it.
   */
   post data/ByteArray -> Response
       --host/string
@@ -659,7 +754,9 @@ class Client:
 
     return post_ encoded parsed --headers=headers --content-type="application/x-www-form-urlencoded" --follow-redirects=follow-redirects
 
-  try-to-reuse_ location/ParsedUri_ [block]:
+  try-to-reuse_ location/ParsedUri_
+      --retry-on-connection-close/bool=true
+      [block]:
     // We try to reuse an existing connection to a server, but a web server can
     // lose interest in a long-running connection at any time and close it, so
     // if it fails we need to reconnect.
@@ -671,7 +768,11 @@ class Client:
       // info to a from-scratch connection attempt.
       for attempt := 0; attempt < 3; attempt++:
         reused := ensure-connection_ location
-        catch --unwind=(: attempt == 2 or ((not reused or not is-close-exception_ it) and it != "RESUME_FAILED")):
+        catch --unwind=(: attempt == 2
+            or ((not reused
+                  or not retry-on-connection-close
+                  or not is-close-exception_ it)
+                and it != "RESUME_FAILED")):
           sock := connection_.socket_
           if sock is tls.Socket and not reused:
             tls-socket := sock as tls.Socket
