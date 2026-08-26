@@ -4,6 +4,7 @@
 
 import expect show *
 import http
+import http.connection show is-close-exception_
 import monitor
 import net
 
@@ -16,6 +17,7 @@ main:
   port := server-socket.local-address.port
   server := http.Server
   server-done := monitor.Latch
+  response-read := monitor.Semaphore
   server-closed := monitor.Semaphore
   received-methods := []
 
@@ -26,6 +28,7 @@ main:
           writer.out.write "ready"
           writer.close
           socket := writer.detach
+          response-read.down
           socket.close
           server-closed.up
         else:
@@ -50,7 +53,7 @@ main:
   headers := http.Headers
   headers.set "X-Test" "yes"
   try:
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
     response := client.request http.PUT PUT-DATA
         --host="localhost"
@@ -62,45 +65,41 @@ main:
     expect-equals 200 response.status-code
     expect-equals PUT-DATA response.body.read-all
 
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
     // POST isn't idempotent by definition, so it isn't retried without an
     // explicit opt-in.
-    exception := catch:
+    expect-connection-close:
       client.request http.POST POST-DATA
           --uri="http://localhost:$port/upload?kind=post"
           --headers=headers
           --content-type="application/octet-stream"
-    expect-not-null exception
     expect-equals [http.PUT] received-methods
 
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
-    exception = catch:
+    expect-connection-close:
       client.post POST-DATA
           --uri="http://localhost:$port/upload?kind=post"
           --headers=headers
           --content-type="application/octet-stream"
-    expect-not-null exception
 
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
-    exception = catch:
+    expect-connection-close:
       client.post-json {"value": 1}
           --uri="http://localhost:$port/upload?kind=post"
           --headers=headers
-    expect-not-null exception
 
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
-    exception = catch:
+    expect-connection-close:
       client.post-form {"value": "1"}
           --uri="http://localhost:$port/upload?kind=post"
           --headers=headers
-    expect-not-null exception
     expect-equals [http.PUT] received-methods
 
-    warm-up client port server-closed
+    warm-up client port response-read server-closed
 
     response = client.request http.POST POST-DATA
         --uri="http://localhost:$port/upload?kind=post"
@@ -118,8 +117,21 @@ main:
     server-done.get
     network.close
 
-warm-up client/http.Client port/int server-closed/monitor.Semaphore:
+warm-up client/http.Client port/int
+    response-read/monitor.Semaphore
+    server-closed/monitor.Semaphore:
   response := client.get --host="localhost" --port=port --path="/warm-up"
   expect-equals 200 response.status-code
-  expect-equals "ready" response.body.read-all.to-string
-  server-closed.down
+  data/string? := null
+  try:
+    data = response.body.read-all.to-string
+  finally:
+    response-read.up
+    server-closed.down
+  expect-equals "ready" data
+
+expect-connection-close [block]:
+  exception := catch --trace=(: not is-close-exception_ it): block.call
+  expect
+      is-close-exception_ exception
+      --message="Expected a connection-close exception, got <$exception>"
