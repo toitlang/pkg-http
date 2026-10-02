@@ -158,7 +158,7 @@ class Connection:
     headers-written := false
     no-delay-restored := false
     try:
-      socket_.no-delay = false
+      set-no-delay_ false
       writer.write status
       headers.write-to writer
       if is-client-request and host_:
@@ -172,7 +172,7 @@ class Connection:
       // finally ensures that we still close while its exception propagates.
       try:
         if headers-written:
-          socket_.no-delay = true
+          set-no-delay_ true
           no-delay-restored = true
       finally:
         // A partial header or a failed TCP_NODELAY restoration makes the
@@ -182,6 +182,13 @@ class Connection:
           close
 
     return body-writer
+
+  set-no-delay_ value/bool -> none:
+    exception := catch --unwind=(: it != "Invalid argument"):
+      socket_.no-delay = value
+    // macOS rejects socket options with EINVAL once the peer has reset the
+    // connection. Report that as a close, so that clients can retry.
+    if exception: throw "Connection closed"
 
   // Gets the next request from the client. If the client closes the
   // connection, returns null.
