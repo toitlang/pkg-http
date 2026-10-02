@@ -6,7 +6,7 @@ import expect show *
 import http
 import monitor show Semaphore
 import net
-import http.web-socket show FragmentReader_
+import http.web-socket show mask-bytes_
 
 // Sets up a web server that can switch to websocket mode on the "/" path.
 // The server just sends back everything it gets.
@@ -116,6 +116,6 @@ unmark-bytes-test -> none:
   for offset := 0; offset < 4; offset++:
     for size := 98; size < 102; size++:
       data := ByteArray size: it
-      FragmentReader_.unmask-bytes_ data mask offset
+      mask-bytes_ data mask offset
       data.size.repeat:
         expect-equals data[it] (it ^ mask[(it + offset) & 3])

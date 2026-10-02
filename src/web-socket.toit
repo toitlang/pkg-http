@@ -445,11 +445,15 @@ class WebSocketWriter extends io.CloseableWriter:
     if not masking_:
       owner_.write_ data from to
       return
+    // Mask a copy, since the caller's data may be a string or reused after
+    // the write. The socket copies the data, so we can reuse the buffer.
+    scratch := ByteArray (min (to - from) 4096)
     while from < to:
-      // Bound the temporary allocation and leave the caller's data unchanged.
-      size := min (to - from) 1024
-      masked := ByteArray size: (data.byte-at (from + it)) ^ mask_[(mask-offset_ + it) & 3]
-      owner_.write_ masked
+      size := min (to - from) scratch.size
+      chunk := scratch[..size]
+      data.write-to-byte-array chunk --at=0 from (from + size)
+      mask-bytes_ chunk mask_ mask-offset_
+      owner_.write_ chunk
       from += size
       mask-offset_ += size
 
@@ -593,7 +597,7 @@ class FragmentReader_:
       owner_.unread_ next-byte-array[max..]
       next-byte-array = next-byte-array[..max]
     if masking-bytes:
-      unmask-bytes_ next-byte-array masking-bytes received_
+      mask-bytes_ next-byte-array masking-bytes received_
     received_ += next-byte-array.size
     return next-byte-array
 
@@ -601,18 +605,24 @@ class FragmentReader_:
     if control-bits_ & FIN-FLAG_ == 0: return null
     return size_
 
-  static unmask-bytes_ byte-array/ByteArray masking-bytes/ByteArray received/int -> none:
-    for i := 0; i < byte-array.size; i++:
-      if received & 3 == 0 and i + 4 < byte-array.size:
-        // When we are at the start of the masking bytes we can accelerate with blit.
-        blit
-          masking-bytes           // Source.
-          byte-array[i..]         // Destination.
-          4                       // Line width of 4 bytes.
-          --source-line-stride=0  // Restart at the beginning of the masking bytes on every line.
-          --operation=XOR         // dest[i] ^= source[j].
-        // Skip the bytes we just blitted.
-        blitted := round-down (byte-array.size - i) 4
-        i += blitted
-      if i < byte-array.size:
-        byte-array[i] ^= masking-bytes[received++ & 3]
+/**
+XORs the $byte-array in place with the 4-byte $masking-bytes, starting at
+  $offset bytes into the mask.
+
+Masking is its own inverse, so this both masks and unmasks.
+*/
+mask-bytes_ byte-array/ByteArray masking-bytes/ByteArray offset/int -> none:
+  for i := 0; i < byte-array.size; i++:
+    if offset & 3 == 0 and i + 4 < byte-array.size:
+      // When we are at the start of the masking bytes we can accelerate with blit.
+      blit
+        masking-bytes           // Source.
+        byte-array[i..]         // Destination.
+        4                       // Line width of 4 bytes.
+        --source-line-stride=0  // Restart at the beginning of the masking bytes on every line.
+        --operation=XOR         // dest[i] ^= source[j].
+      // Skip the bytes we just blitted.
+      blitted := round-down (byte-array.size - i) 4
+      i += blitted
+    if i < byte-array.size:
+      byte-array[i] ^= masking-bytes[offset++ & 3]
