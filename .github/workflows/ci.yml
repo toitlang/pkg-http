@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+  pull_request:
   release:
     types: [published]
 
@@ -10,11 +11,9 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
-        # The versions should contain (at least) the lowest requirement
-        #    and a version that is more up to date.
-        toit-version: [ v2.0.0-alpha.190, latest ]
+        toit-version: [ oldest, latest ]
         include:
-          - toit-version: v2.0.0-alpha.190
+          - toit-version: oldest
             version-name: old
           - toit-version: latest
             version-name: new
@@ -26,9 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Resolve Toit version
+        id: toit-version
+        shell: bash
+        run: |
+          if [[ "${{ matrix.toit-version }}" == "oldest" ]]; then
+            sdk=$(grep -E '^[[:space:]]+sdk:' package.yaml | head -1 \
+              | sed -E 's/^[[:space:]]+sdk:[[:space:]]*//; s/^\^//' \
+              | tr -d "\"' ")
+            echo "version=v$sdk" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: toitlang/action-setup@v1
         with:
-          toit-version: ${{ matrix.toit-version }}
+          toit-version: ${{ steps.toit-version.outputs.version }}
 
       - name: Start httpbin - Linux
         if: runner.os == 'Linux'
