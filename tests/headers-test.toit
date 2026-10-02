@@ -9,6 +9,13 @@ import io
 main:
   test-from-map
   test-keys
+  test-remove
+
+test-remove:
+  ["content-type", "CONTENT-TYPE", "Content-Type"].do: | key/string |
+    headers := http.Headers.from-map {"Content-Type": "text/plain"}
+    headers.remove key
+    expect-not (headers.contains "Content-Type")
 
 /**
 Converts the given $headers to a string.
