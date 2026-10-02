@@ -39,15 +39,19 @@ class Connection:
     return socket_ != null
 
   close -> none:
-    if socket_:
-      socket_.close
-      if current-writer_:
-        current-writer_.close
-      socket_ = null
-      remove-finalizer this
-      write-closed_ = true
-      current-reader_ = null
-      current-writer_ = null
+    if not socket_: return
+    socket := socket_
+    writer := current-writer_
+    // Release ownership before closing a transport that may throw.
+    socket_ = null
+    remove-finalizer this
+    write-closed_ = true
+    current-reader_ = null
+    current-writer_ = null
+    try:
+      socket.close
+    finally:
+      if writer: writer.close
 
   finalize_:
     // TODO: We should somehow warn people that they forgot to close the
@@ -97,8 +101,14 @@ class Connection:
     if not current-reader_:
       close
     else if socket_:
-      socket_.out.close
-      write-closed_ = true
+      success := false
+      try:
+        socket_.out.close
+        write-closed_ = true
+        success = true
+      finally:
+        if not success:
+          catch: close
 
   /**
   Sends the given $headers.
@@ -196,8 +206,7 @@ class Connection:
     if reader.read-byte != '\n': throw "FORMAT_ERROR"
 
     headers := read-headers_
-    content-length-str := headers.single "Content-Length"
-    content-length := content-length-str and (int.parse content-length-str)
+    content-length := read-content-length_ headers
     current-reader_ = body-reader_ headers --request=true content-length
 
     body-reader := current-reader_ or ContentLengthReader_ this reader 0
@@ -210,33 +219,56 @@ class Connection:
     remove-finalizer this
     return socket
 
-  read-response -> Response:
+  read-response --request-method/string?=null -> Response:
     reader := socket_.in
     if current-reader_: throw "Previous response not completed"
     headers := null
+    success := false
     try:
-      version := reader.read-string (reader.index-of ' ' --throw-if-absent)
-      reader.skip 1
-      status-code := int.parse (reader.read-string (reader.index-of ' ' --throw-if-absent))
-      reader.skip 1
-      status-message := reader.read-string (reader.index-of '\r' --throw-if-absent)
-      reader.skip 1
-      if reader.read-byte != '\n': throw "FORMAT_ERROR"
+      while true:
+        version := reader.read-string (reader.index-of ' ' --throw-if-absent)
+        reader.skip 1
+        status-code := int.parse (reader.read-string (reader.index-of ' ' --throw-if-absent))
+        reader.skip 1
+        status-message := reader.read-string (reader.index-of '\r' --throw-if-absent)
+        reader.skip 1
+        if reader.read-byte != '\n': throw "FORMAT_ERROR"
 
-      headers = read-headers_
-      content-length-str := headers.single "Content-Length"
-      content-length := content-length-str and (int.parse content-length-str)
-      current-reader_ = body-reader_ headers --request=false --status-code=status-code content-length
+        headers = read-headers_
+        if is-information-status-code status-code and status-code != STATUS-SWITCHING-PROTOCOLS:
+          continue
+        content-length := read-content-length_ headers
+        current-reader_ = request-method == "HEAD"
+            ? null
+            : (body-reader_ headers --request=false --status-code=status-code content-length)
 
-      body-reader := current-reader_ or ContentLengthReader_ this reader 0
-      return Response this version status-code status-message headers body-reader
+        body-reader := current-reader_ or ContentLengthReader_ this reader 0
+        success = true
+        return Response this version status-code status-message headers body-reader
 
     finally:
-      if not headers:
+      if not success:
         close
+
+  read-content-length_ headers/Headers -> int?:
+    values := headers.get "Content-Length"
+    if not values: return null
+    // Reject ambiguous framing rather than letting a peer or proxy disagree
+    // with us about where the next message starts.
+    if values.size != 1 or headers.contains "Transfer-Encoding":
+      throw "INVALID_CONTENT_LENGTH"
+    value := values[0].trim
+    if value.is-empty: throw "INVALID_CONTENT_LENGTH"
+    value.do:
+      if not '0' <= it <= '9': throw "INVALID_CONTENT_LENGTH"
+    return int.parse value
 
   body-reader_ headers/Headers --request/bool --status-code/int?=null content-length/int? -> io.Reader?:
     reader := socket_.in
+    if not request and (is-information-status-code status-code
+        or status-code == STATUS-NO-CONTENT
+        or status-code == 304):
+      return null
     if content-length:
       if content-length == 0: return null  // No read is needed to drain this response.
       return ContentLengthReader_ this reader content-length
@@ -250,10 +282,9 @@ class Connection:
       else if not headers.matches T-E "identity":
         throw "No support for $T-E: $(headers.single T-E)"
 
-    if request or status-code == STATUS-NO-CONTENT:
+    if request:
       // For requests (we are the server) a missing Content-Length means a zero
-      // length body.  We also do this as client if the server has explicitly
-      // stated that there is no content.  We return a null reader, which means
+      // length body. We return a null reader, which means
       // the user does not need to drain the response.
       return null
 
@@ -333,7 +364,7 @@ class ContentLengthReader_ extends io.Reader:
     if read-from-wrapped_ >= content-size:
       connection_.reading-done_ this
       return null
-    data := reader_.read --max-size=(content-size - processed)
+    data := reader_.read --max-size=(content-size - read-from-wrapped_)
     if not data:
       connection_.close
       throw io.Reader.UNEXPECTED-END-OF-READER
@@ -389,6 +420,8 @@ class ContentLengthWriter_ extends io.CloseableWriter implements BodyWriter:
     return written-to-wrapped_ >= content-length_
 
   try-write_ data/io.Data from/int to/int -> int:
+    if to - from > content-length_ - written-to-wrapped_:
+      throw "TOO_MUCH_WRITTEN"
     result := writer_.try-write data from to
     written-to-wrapped_ += result
     return result

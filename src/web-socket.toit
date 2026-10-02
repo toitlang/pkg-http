@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import bitmap show blit XOR
+import crypto
 import crypto.sha1 show sha1
 import encoding.base64
 import io
@@ -42,6 +43,8 @@ class WebSocket:
   writer-semaphore_ := Semaphore --count=1
   current-reader_ /WebSocketReader? := null
   is-client_ /bool
+  write-closed_/bool := false
+  closed_/bool := false
 
   constructor .socket_ --client/bool:
     is-client_ = client
@@ -120,7 +123,7 @@ class WebSocket:
 
   // Reads the header of the next fragment.
   next-fragment_ -> FragmentReader_?:
-    if socket_ == null: return null  // Closed.
+    if closed_: return null
 
     reader := socket_.in
     if not reader.try-ensure-buffered 1: return null
@@ -191,10 +194,19 @@ class WebSocket:
     block until the previous writer is completed.
   */
   start-sending --size/int?=null --opcode/int?=null -> io.CloseableWriter:
+    if write-closed_: throw "ALREADY_CLOSED"
     writer-semaphore_.down
-    assert: current-writer_ == null
-    current-writer_ = WebSocketWriter.private_ this size --masking=is-client_ --opcode=opcode
-    return current-writer_
+    success := false
+    try:
+      if write-closed_: throw "ALREADY_CLOSED"
+      assert: current-writer_ == null
+      current-writer_ = WebSocketWriter.private_ this size --masking=is-client_ --opcode=opcode
+      success = true
+      return current-writer_
+    finally:
+      if not success:
+        critical-do --no-respect-deadline:
+          writer-semaphore_.up
 
   /**
   Send a ping with the given $payload, which is a string or a ByteArray.
@@ -207,11 +219,13 @@ class WebSocket:
     schedule-ping_ payload OPCODE-PING_
 
   schedule-ping_ payload opcode/int -> none:
+    if write-closed_: throw "ALREADY_CLOSED"
     if current-writer_:
       current-writer_.pending-pings_.add [opcode, payload]
     else:
       writer-semaphore_.down
       try:
+        if write-closed_: throw "ALREADY_CLOSED"
         // Send immediately.
         writer := WebSocketWriter.private_ this payload.size --masking=is-client_ --opcode=opcode
         writer.write payload
@@ -221,11 +235,37 @@ class WebSocket:
           writer-semaphore_.up
 
   writer-close_ writer/WebSocketWriter -> none:
+    // Temporary control-frame writers don't own the message semaphore.
+    if current-writer_ != writer: return
     current-writer_ = null
     writer-semaphore_.up
 
   write_ data/io.Data from=0 to=data.byte-size -> none:
-    socket_.out.write data from to
+    success := false
+    try:
+      socket_.out.write data from to
+      success = true
+    finally:
+      // A partial frame cannot be resumed safely. Preserve the write error.
+      if not success:
+        catch: abort_
+
+  // Releases the message writer without sending any more frame bytes.
+  abort-writer_ -> none:
+    critical-do --no-respect-deadline:
+      write-closed_ = true
+      if writer := current-writer_:
+        writer.owner_ = null
+        writer.mark-closed_
+        current-writer_ = null
+        writer-semaphore_.up
+
+  abort_ -> none:
+    if closed_: return
+    closed_ = true
+    abort-writer_
+    current-reader_ = null
+    socket_.close
 
   reader-close_ -> none:
     current-reader_ = null
@@ -238,9 +278,11 @@ class WebSocket:
   If we are in a suitable place in the protocol, sends a close packet first.
   */
   close --status-code/int=STATUS-WEBSOCKET-NORMAL-CLOSURE:
-    close-write --status-code=status-code
-    socket_.close
-    current-reader_ = null
+    if closed_: return
+    try:
+      close-write --status-code=status-code
+    finally:
+      abort_
 
   /**
   Closes the websocket for writing.
@@ -251,23 +293,32 @@ class WebSocket:
   Most peers will respond by closing the other direction.
   */
   close-write --status-code/int=STATUS-WEBSOCKET-NORMAL-CLOSURE:
-    if current-writer_ == null:
-      writer-semaphore_.down
-      try:
-        // If we are not in the middle of a message, we can send a close packet.
-        catch:  // Catch because the write end may already be closed.
-          writer := WebSocketWriter.private_ this 2 --masking=is-client_ --opcode=OPCODE-CLOSE_
-          payload := ByteArray 2
-          BIG-ENDIAN.put-uint16 payload 0 status-code
-          writer.write payload
-          writer.close
-      finally:
-        critical-do --no-respect-deadline:
-          writer-semaphore_.up
-    socket_.out.close
-    if current-writer_:
-      current-writer_ = null
-      writer-semaphore_.up
+    if write-closed_: return
+    write-closed_ = true
+    success := false
+    try:
+      if current-writer_ == null:
+        writer-semaphore_.down
+        try:
+          // If we are not in the middle of a message, we can send a close packet.
+          catch:  // Catch because the write end may already be closed.
+            writer := WebSocketWriter.private_ this 2 --masking=is-client_ --opcode=OPCODE-CLOSE_
+            payload := ByteArray 2
+            BIG-ENDIAN.put-uint16 payload 0 status-code
+            writer.write payload
+            writer.close
+        finally:
+          critical-do --no-respect-deadline:
+            writer-semaphore_.up
+      // Another task may have fully closed while the close frame was sent.
+      if not closed_:
+        catch --unwind=(: not closed_): socket_.out.close
+      success = true
+    finally:
+      abort-writer_
+      // A failed shutdown cannot leave the transport owned by nobody.
+      if not success:
+        catch: abort_
 
   static add-client-upgrade-headers_ headers/Headers -> string:
     // The WebSocket nonce is not very important and does not need to be
@@ -341,6 +392,8 @@ class WebSocketWriter extends io.CloseableWriter:
   remaining-in-fragment_ /int := 0
   fragment-sent_ /bool := false
   masking_ /bool
+  mask_/ByteArray? := null
+  mask-offset_/int := 0
   // Pings and pongs can be interleaved with the fragments in a message.
   pending-pings_ /List := []
 
@@ -370,7 +423,7 @@ class WebSocketWriter extends io.CloseableWriter:
         size := min (to - from) remaining-in-fragment_
         // We don't use slices because data might be a string with UTF-8
         // sequences in it.
-        owner_.write_ data from (from + size)
+        write-payload_ data from (from + size)
         from += size
         remaining-in-fragment_ -= size
 
@@ -386,12 +439,28 @@ class WebSocketWriter extends io.CloseableWriter:
       opcode := item[0]
       payload := item[1]
       write-fragment-header_ payload.size opcode payload.size
-      owner_.write_ payload
+      write-payload_ payload
+
+  write-payload_ data/io.Data from/int=0 to/int=data.byte-size -> none:
+    if not masking_:
+      owner_.write_ data from to
+      return
+    while from < to:
+      // Bound the temporary allocation and leave the caller's data unchanged.
+      size := min (to - from) 1024
+      masked := ByteArray size: (data.byte-at (from + it)) ^ mask_[(mask-offset_ + it) & 3]
+      owner_.write_ masked
+      from += size
+      mask-offset_ += size
+
+  set-mask_ header/ByteArray -> none:
+    if not masking_: return
+    mask_ = crypto.random --size=4
+    mask-offset_ = 0
+    header.replace (header.size - 4) mask_
 
   write-fragment-header_ max-size/int opcode/int size/int?:
     header /ByteArray := ?
-    // If the protocol requires it, we supply a 4 byte mask, but it's always
-    // zero so we don't need to apply it on send.
     masking-flag := masking_ ? MASKING-FLAG_ : 0
     remaining-in-fragment := ?
     if size:
@@ -419,23 +488,33 @@ class WebSocketWriter extends io.CloseableWriter:
       header[0] = opcode
       header[1] = remaining-in-fragment | masking-flag
 
+    set-mask_ header
     owner_.write_ header
 
     return remaining-in-fragment
 
   close_:
-    if remaining-in-fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
-    if owner_:
-      if size_ == null:
-        // If size is null, we didn't know the size of the complete message ahead
-        // of time, which means we didn't set the fin flag on the last packet.  Send
-        // a zero length packet with a fin flag.
-        header := ByteArray 2
-        header[0] = FIN-FLAG_ | (fragment-sent_ ? OPCODE-CONTINUATION_ : OPCODE-BINARY_)
-        owner_.write_ header
-      write-any-ping_
-      owner_.writer-close_ this  // Notify the websocket that we are done.
-      owner_ = null
+    owner := owner_
+    success := false
+    try:
+      if remaining-in-fragment_ != 0: throw "TOO_LITTLE_WRITTEN"
+      if owner_:
+        if size_ == null:
+          // If size is null, we didn't know the size of the complete message ahead
+          // of time, which means we didn't set the fin flag on the last packet.  Send
+          // a zero length packet with a fin flag.
+          header := ByteArray (masking_ ? 6 : 2)
+          header[0] = FIN-FLAG_ | (fragment-sent_ ? OPCODE-CONTINUATION_ : OPCODE-BINARY_)
+          header[1] = masking_ ? MASKING-FLAG_ : 0
+          set-mask_ header
+          owner_.write_ header
+        write-any-ping_
+        owner_.writer-close_ this  // Notify the websocket that we are done.
+        owner_ = null
+      success = true
+    finally:
+      if not success and owner:
+        catch: owner.abort_
 
 /**
 A reader for an individual message sent to us.
@@ -460,7 +539,7 @@ class WebSocketReader extends io.Reader:
   */
   read_ -> ByteArray?:
     result := fragment-reader_.read
-    if result == null:
+    while result == null:
       if fragment-reader_.is-fin:
         if owner_:
           owner_.reader-close_
