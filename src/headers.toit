@@ -68,7 +68,7 @@ class Headers:
   */
   remove key/string -> none:
     if not headers_: return
-    headers_.remove key
+    headers_.remove (ascii-normalize_ key)
 
   /**
   Returns the stored values for the given $key.

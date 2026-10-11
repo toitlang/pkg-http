@@ -430,7 +430,9 @@ class Client:
       if follow-redirects and
           (is-regular-redirect_ response.status-code
             or response.status-code == STATUS-SEE-OTHER):
-        parsed = get-location_ response parsed
+        next := get-location_ response parsed
+        headers = redirect-headers_ headers parsed next
+        parsed = next
         continue.repeat
       else:
         return response
@@ -440,6 +442,15 @@ class Client:
   get-location_ response/Response previous/ParsedUri_ -> ParsedUri_:
     location := response.headers.single "Location"
     return ParsedUri_.parse_ location --previous=previous
+
+  redirect-headers_ headers/Headers? previous/ParsedUri_ next/ParsedUri_ -> Headers?:
+    if not headers or next.can-reuse-connection previous: return headers
+    // Credentials belong to the origin that the caller supplied them for.
+    result := headers.copy
+    result.remove "Authorization"
+    result.remove "Proxy-Authorization"
+    result.remove "Cookie"
+    return result
 
   /**
   Variant of $(web-socket --host).
@@ -492,7 +503,9 @@ class Client:
       if follow-redirects and
           (is-regular-redirect_ response.status-code
             or response.status-code == STATUS-SEE-OTHER):
-        parsed = get-location_ response parsed
+        next := get-location_ response parsed
+        headers = redirect-headers_ headers parsed next
+        parsed = next
         continue.repeat
       else:
         WebSocket.check-client-upgrade-response_ response nonce
@@ -623,10 +636,14 @@ class Client:
         response = request.send
 
       if follow-redirects and is-regular-redirect_ response.status-code:
-        parsed = get-location_ response parsed
+        next := get-location_ response parsed
+        headers = redirect-headers_ headers parsed next
+        parsed = next
         continue.repeat
       else if follow-redirects and response.status-code == STATUS-SEE-OTHER:
-        parsed = get-location_ response parsed
+        next := get-location_ response parsed
+        headers = redirect-headers_ headers parsed next
+        parsed = next
         headers = headers.copy
         clear-payload-headers_ headers
         return get_ parsed headers --follow-redirects=true // Switch from POST to GET.
@@ -919,9 +936,24 @@ class ParsedUri_:
   /// Returns the hostname, with the port appended if it is non-default.
   host-with-port -> string:
     default-port := SCHEMES_[scheme]
-    return default-port == port ? host : "$host:$port"
+    authority-host := (host.contains ":") ? "[$host]" : host
+    return default-port == port ? authority-host : "$authority-host:$port"
 
   constructor.parse_ uri/string --default-scheme/string? --previous/ParsedUri_?=null:
+    original-uri := uri
+    // Separate the fragment and query before looking for an authority or path.
+    // Their contents may include characters such as '/', '?' and ':'.
+    fragment/string? := null
+    hash := uri.index-of "#"
+    if hash >= 0:
+      fragment = uri[hash + 1..]
+      uri = uri[..hash]
+    query/string? := null
+    question := uri.index-of "?"
+    if question >= 0:
+      query = uri[question + 1..]
+      uri = uri[..question]
+
     // We recognize a scheme if it's either one of the four we support or if it's
     // followed by colon-slash.  This lets us recognize localhost:1080.
     colon := uri.index-of ":"
@@ -936,7 +968,7 @@ class ParsedUri_:
           uri = uri[colon + 1..]
 
     scheme = scheme or default-scheme or (previous and previous.scheme)
-    if not scheme: throw "Missing scheme in '$uri'"
+    if not scheme: throw "Missing scheme in '$original-uri'"
     if not SCHEMES_.contains scheme: throw "Unknown scheme: '$scheme'"
     // If this is a URI supplied by the library user (no previous), we allow
     // plain hostnames with no path, but if there is a previous we require a
@@ -966,14 +998,17 @@ class ParsedUri_:
       host = previous.host
       port = previous.port
       path = uri
-    hash := path.index-of "#"
-    fragment := null
-    if hash > 0:
-      fragment = path[hash + 1..]
-      path = path[..hash]
-    if previous and not path.starts-with "/":
+    if previous and not has-host and path.is-empty:
+      // Empty and fragment-only references retain the previous path and query.
+      // A new query replaces only the previous query, not its resource path.
+      path = previous.path
+      if query:
+        previous-question := path.index-of "?"
+        if previous-question >= 0: path = path[..previous-question]
+    else if previous and not path.starts-with "/":
       // Relative path.
       path = merge-paths_ previous.path path
+    if query: path += "?$query"
     return ParsedUri_.private_
         --scheme=scheme
         --host=host

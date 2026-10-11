@@ -303,7 +303,7 @@ class ResponseWriter extends Object with io.OutMixin:
 
   write-headers status-code/int --message/string?=null:
     if body-writer_: throw "headers already written"
-    has-body := status-code != STATUS-NO-CONTENT
+    has-body := status-code != STATUS-NO-CONTENT and request_.method != "HEAD"
     write-headers_
         status-code
         --message=message
@@ -351,7 +351,7 @@ class ResponseWriter extends Object with io.OutMixin:
   // Returns true if the connection was closed due to an error.
   close-on-exception_ message/string -> bool:
     logger_.info message
-    if not connection_.is-open_:
+    if not connection_ or not connection_.is-open_:
       // The connection already died (typically the peer went away while
       // we were writing the headers). Nothing more we can do.
       return true
@@ -379,7 +379,7 @@ class ResponseWriter extends Object with io.OutMixin:
   */
   close -> none:
     mark-writer-closed_
-    if not connection_.is-open_:
+    if not connection_ or not connection_.is-open_:
       // The connection already died (typically the peer went away while
       // we were writing the headers). Nothing more we can do.
       return
@@ -403,7 +403,9 @@ class ResponseWriter extends Object with io.OutMixin:
       logger_.info "Returned from router without any data for the client"
 
   detach -> tcp.Socket:
+    if not connection_: throw "ALREADY_CLOSED"
+    socket := connection_.detach
     detached_ = true
-    connection := connection_
     connection_ = null
-    return connection.detach
+    mark-writer-closed_
+    return socket

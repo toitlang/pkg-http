@@ -59,12 +59,23 @@ class ChunkedReader_ extends io.Reader:
       raw-length := reader_.read-bytes-up-to '\r'
       expect_ '\n'
 
-      left-in-chunk_ = int.parse raw-length --radix=16
+      length := raw-length.to-string
+      extension := length.index-of ";"
+      if extension >= 0: length = length[..extension].trim
+      if length.is-empty: throw "PROTOCOL_ERROR"
+      length.do:
+        if not '0' <= it <= '9' and not 'a' <= it <= 'f' and not 'A' <= it <= 'F':
+          throw "PROTOCOL_ERROR"
+      left-in-chunk_ = int.parse length --radix=16
 
       // End is indicated by a zero hex length.
       if left-in-chunk_ == 0:
-        expect_ '\r'
-        expect_ '\n'
+        // Consume optional trailers through the empty line. Trailers don't
+        // change the framing or the headers already exposed to the caller.
+        while true:
+          trailer := reader_.read-bytes-up-to '\r'
+          expect_ '\n'
+          if trailer.is-empty: break
         connection_.reading-done_ this
         connection_ = null
 

@@ -6,6 +6,7 @@ import http
 import expect show *
 
 main:
+  test-query-and-fragment
   parts := http.ParsedUri_.parse_ "https://www.youtube.com/watch?v=2HJxya0CWco#t=0m6s"
   expect-equals "https"                parts.scheme
   expect-equals "www.youtube.com"      parts.host
@@ -230,12 +231,16 @@ main:
   expect                           parts.use-tls
 
   parts = http.ParsedUri_.parse_ "https://[::]:80/foo#fraggy"
+  expect-equals "[::]:80" parts.host-with-port
   expect-equals "https"            parts.scheme
   expect-equals "::"               parts.host
   expect-equals 80                 parts.port
   expect-equals "/foo"             parts.path
   expect-equals "fraggy"           parts.fragment
   expect                           parts.use-tls
+
+  expect-equals "[::1]"
+      (http.ParsedUri_.parse_ "http://[::1]/").host-with-port
 
   expect-throw "URI_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https://[::] :80/foo#fraggy"
   expect-throw "URI_PARSING_ERROR": parts = http.ParsedUri_.parse_ "https://[::/foo#fraggy"
@@ -273,3 +278,34 @@ main:
       http.ParsedUri_.merge-paths_ "/bar/" "../../foo.txt"
   expect-throw "ILLEGAL_PATH":
       http.ParsedUri_.merge-paths_ "/bar/" "./../../foo.txt"
+
+test-query-and-fragment:
+  [
+    ["http://example.com?x=1", "example.com", "/?x=1", null],
+    ["http://example.com#frag", "example.com", "/", "frag"],
+    ["http://example.com?x=/a?b#frag?x", "example.com", "/?x=/a?b", "frag?x"],
+    ["http://example.com?#", "example.com", "/?", ""],
+    ["http://[::1]:8080?x=1#frag", "::1", "/?x=1", "frag"],
+  ].do: | test/List |
+    parsed := http.ParsedUri_.parse_ test[0]
+    expect-equals test[1] parsed.host
+    expect-equals test[2] parsed.path
+    expect-equals test[3] parsed.fragment
+
+  previous := http.ParsedUri_.parse_ "http://example.com/dir/page?q=old#old"
+  [
+    ["?q=new", "example.com", "/dir/page?q=new", "old"],
+    ["?", "example.com", "/dir/page?", "old"],
+    ["#frag", "example.com", "/dir/page?q=old", "frag"],
+    ["#", "example.com", "/dir/page?q=old", ""],
+    ["", "example.com", "/dir/page?q=old", "old"],
+    ["?q=/../?next#frag?x", "example.com", "/dir/page?q=/../?next", "frag?x"],
+    ["next?q=new#frag", "example.com", "/dir/next?q=new", "frag"],
+    ["/next#frag", "example.com", "/next", "frag"],
+    ["//other.example?x=1#frag", "other.example", "/?x=1", "frag"],
+    ["http://other.example#frag", "other.example", "/", "frag"],
+  ].do: | test/List |
+    parsed := http.ParsedUri_.parse_ test[0] --previous=previous
+    expect-equals test[1] parsed.host
+    expect-equals test[2] parsed.path
+    expect-equals test[3] parsed.fragment

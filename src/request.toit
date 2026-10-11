@@ -57,7 +57,7 @@ class RequestOutgoing extends Request:
       while data := body.read:
         body-writer.write data
     body-writer.close
-    return connection_.read-response
+    return connection_.read-response --request-method=method
 
   drain: body.drain
 
