@@ -102,6 +102,7 @@ class Client:
   interface_/tcp.Interface
 
   use-tls-by-default_ ::= false
+  allow-insecure-redirects_/bool
   certificate_/tls.Certificate? ::= null
   server-name_/string? ::= null
   root-certificates_/List ::= []
@@ -137,14 +138,23 @@ class Client:
     buffer memory for the TLS connection.  Call $close (perhaps in a finally
     clause) to release the connection.
 
+  By default, following an HTTPS-to-HTTP or WSS-to-WS redirect throws
+    `INSECURE_REDIRECT` before connecting to the insecure destination. This
+    applies at every hop, including redirects that switch from POST to GET.
+    Set $allow-insecure-redirects to true to permit these redirects, which may
+    expose request headers and bodies over plaintext. Explicit HTTP or WS
+    requests and requests that do not follow redirects are unaffected.
+
   See the `certificate_roots` package for common roots:
     https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
   */
   constructor network/tcp.Interface
       --root-certificates/List=[]
-      --security-store/SecurityStore=SecurityStoreInMemory:
+      --security-store/SecurityStore=SecurityStoreInMemory
+      --allow-insecure-redirects/bool=false:
     interface_ = network
     security-store_ = security-store
+    allow-insecure-redirects_ = allow-insecure-redirects
     root-certificates_ = root-certificates
     add-finalizer this:: this.finalize_
 
@@ -159,13 +169,17 @@ class Client:
   The $server-name can be specified for verifying the TLS certificate.  This is
     for the rare case where we wish to verify the TLS connections with a
     different server name from the one used to establish the connection.
+
+  The $allow-insecure-redirects option has the same meaning as in $constructor.
   */
   constructor.tls .interface_
       --root-certificates/List=[]
       --server-name/string?=null
       --certificate/tls.Certificate?=null
-      --security-store/SecurityStore=SecurityStoreInMemory:
+      --security-store/SecurityStore=SecurityStoreInMemory
+      --allow-insecure-redirects/bool=false:
     security-store_ = security-store
+    allow-insecure-redirects_ = allow-insecure-redirects
     use-tls-by-default_ = true
     root-certificates_ = root-certificates
     server-name_ = server-name
@@ -441,7 +455,10 @@ class Client:
 
   get-location_ response/Response previous/ParsedUri_ -> ParsedUri_:
     location := response.headers.single "Location"
-    return ParsedUri_.parse_ location --previous=previous
+    next := ParsedUri_.parse_ location --previous=previous
+    if previous.use-tls and not next.use-tls and not allow-insecure-redirects_:
+      throw "INSECURE_REDIRECT"
+    return next
 
   redirect-headers_ headers/Headers? previous/ParsedUri_ next/ParsedUri_ -> Headers?:
     if not headers or next.can-reuse-connection previous: return headers
