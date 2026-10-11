@@ -108,6 +108,7 @@ class Client:
   root-certificates_/List ::= []
   connection_/Connection? := null
   security-store_/SecurityStore
+  sensitive-headers_/List
 
   /**
   Constructs a new client instance over the given $network.
@@ -145,16 +146,27 @@ class Client:
     expose request headers and bodies over plaintext. Explicit HTTP or WS
     requests and requests that do not follow redirects are unaffected.
 
+  The $sensitive-headers list names additional headers to remove when a
+    redirect changes origin (scheme, host, or port). Header names are matched
+    without regard to ASCII case. `Authorization`, `Proxy-Authorization`, and
+    `Cookie` are always removed on such redirects. Other headers are forwarded;
+    callers must list custom credentials such as `X-Api-Key` here, or disable
+    redirect following. This applies to HTTP and WebSocket redirects.
+    The list is copied, and caller-owned request headers are not modified.
+    Removed headers are not restored if a redirect returns to the original origin.
+
   See the `certificate_roots` package for common roots:
     https://pkg.toit.io/package/github.com%2Ftoitware%2Ftoit-cert-roots
   */
   constructor network/tcp.Interface
       --root-certificates/List=[]
       --security-store/SecurityStore=SecurityStoreInMemory
-      --allow-insecure-redirects/bool=false:
+      --allow-insecure-redirects/bool=false
+      --sensitive-headers/List=[]:
     interface_ = network
     security-store_ = security-store
     allow-insecure-redirects_ = allow-insecure-redirects
+    sensitive-headers_ = sensitive-headers.copy
     root-certificates_ = root-certificates
     add-finalizer this:: this.finalize_
 
@@ -171,15 +183,19 @@ class Client:
     different server name from the one used to establish the connection.
 
   The $allow-insecure-redirects option has the same meaning as in $constructor.
+
+  The $sensitive-headers list has the same meaning as in $constructor.
   */
   constructor.tls .interface_
       --root-certificates/List=[]
       --server-name/string?=null
       --certificate/tls.Certificate?=null
       --security-store/SecurityStore=SecurityStoreInMemory
-      --allow-insecure-redirects/bool=false:
+      --allow-insecure-redirects/bool=false
+      --sensitive-headers/List=[]:
     security-store_ = security-store
     allow-insecure-redirects_ = allow-insecure-redirects
+    sensitive-headers_ = sensitive-headers.copy
     use-tls-by-default_ = true
     root-certificates_ = root-certificates
     server-name_ = server-name
@@ -467,6 +483,7 @@ class Client:
     result.remove "Authorization"
     result.remove "Proxy-Authorization"
     result.remove "Cookie"
+    sensitive-headers_.do: | name/string | result.remove name
     return result
 
   /**
